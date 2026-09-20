@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grabador · RASTRO CAPTURE</title>
+  <link rel="stylesheet" href="recorder.css">
+</head>
+<body>
+  <header>
+    <img src="assets/rastro-logo.jpg" alt="Kit RASTRO">
+    <div><span>KIT DE INVESTIGACIÓN DE FUENTES ABIERTAS</span><h1>Grabador RASTRO</h1></div>
+  </header>
+  <main>
+    <section class="target">
+      <span class="label">PESTAÑA OBJETIVO</span>
+      <strong id="targetTitle">Cargando…</strong>
+      <small id="targetUrl"></small>
+    </section>
+
+    <section class="instructions">
+      <h2>Cómo grabar sin capturar RASTRO</h2>
+      <ol>
+        <li>Pulsa <strong>Seleccionar pestaña y comenzar</strong>.</li>
+        <li>El selector mostrará solamente las pestañas disponibles.</li>
+        <li>Selecciona la pestaña de Instagram o TikTok indicada arriba. <strong>No selecciones esta ventana.</strong></li>
+        <li>Navega normalmente. Para terminar, usa <strong>Dejar de compartir</strong> en el navegador o vuelve aquí.</li>
+      </ol>
+    </section>
+
+    <div id="status" class="status ready" role="status" aria-live="polite"><span></span><p>Preparado para seleccionar la pestaña.</p></div>
+    <div class="controls">
+      <button id="start" class="primary">● Seleccionar pestaña y comenzar</button>
+      <button id="stop" class="danger" disabled>■ Detener y guardar</button>
+    </div>
+    <div id="recording" class="recording" hidden><i></i><strong>GRABANDO</strong><time id="timer">00:00</time></div>
+
+    <section id="result" class="result" hidden>
+      <h2>Grabación guardada</h2>
+      <video id="preview" controls playsinline></video>
+      <dl><dt>Archivo</dt><dd id="fileName"></dd><dt>Ubicación</dt><dd id="filePath"></dd><dt>SHA-256</dt><dd id="hash"></dd></dl>
+    </section>
+  </main>
+  <footer>v0.4.0 · Procesamiento local · WebM reproducible en Chromium y VLC · Creado por S3GAD3</footer>
+  <script type="module" src="recorder.js"></script>
+</body>
+</html>
