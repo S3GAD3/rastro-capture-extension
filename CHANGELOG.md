@@ -1,5 +1,44 @@
 # Historial de cambios
 
+## 0.5.0 — 2026-11-15
+
+Evolución de la 0.4.0: se conservan todas sus funciones de análisis, captura, descarga, perfiles, lote y grabación. Verificado con 49 pruebas unitarias y 150 comprobaciones end-to-end en Chromium real (las 67 de la 0.4.0 siguen pasando).
+
+### Corregido
+- **El botón Cancelar quedaba recortado** (barra de progreso de 8 px con desbordamiento oculto por una regla CSS duplicada): no se podía cancelar una operación larga.
+- Evidencias sin contenido en el almacén se listaban en el informe como si estuvieran en el paquete; ahora constan como «contenido ausente» e incidencia.
+- El registro del grabador usaba un formato distinto al del panel; unificado.
+- La versión figuraba escrita a mano en varios archivos; ahora procede del manifest y una prueba impide que diverjan.
+- Los errores de operación, cancelaciones y fallos de copia en Descargas no quedaban registrados; ahora constan como incidencias.
+- Eliminado código muerto (`src/panel/stitch.js`, sin uso) y reglas CSS duplicadas.
+
+### Añadido
+- **Identidad**: logotipo oficial RASTRO CAPTURE en panel, grabador, visor, verificador e iconos. Tema institucional claro (azul marino, azul policial, blanco, gris).
+- **Interfaz en cuatro secciones** (Captura, Evidencias, Informes, Configuración) con paneles plegables y cabecera de sesión.
+- **Sesiones**: identificador único `RC-AAAAMMDD-HHMMSS-XXXXXX`, contador de evidencias, aviso al cambiar de referencia con evidencias de otro expediente, notas por evidencia.
+- **Personalización institucional**: escudo (PNG, JPG, SVG rasterizado), unidad, dependencia, identificador profesional y lugar. Separada de los datos del expediente, que no se arrastran entre sesiones.
+- **Dos informes**: técnico completo (nueve secciones) y resumido para diligencias, en HTML autónomo y PDF, con escudo en el encabezado y logotipo RASTRO en el pie, incrustados.
+- **Procedencia de los datos**: automático, manual o inferido (con fundamento), en panel, informes y manifiesto.
+- **Generador PDF propio** sin dependencias: A4, encabezado y pie en cada página, «Página n de N», tablas que repiten cabecera.
+- **Visor de informes** con impresión, descarga HTML y descarga PDF.
+- **Manifiesto esquema 3** (`metadatos/manifest.json`): sesión, método de captura, advertencias, clase original/captura/derivado, documentos del paquete e incidencias.
+- **Paquete autocontenido**: `evidencias/`, `informes/`, `registros/`, `metadatos/`, `README_EVIDENCIAS.txt`.
+- **SHA-256 del ZIP** en un archivo `.sha256` independiente.
+- **Verificar integridad**: ZIP (STORE o DEFLATE), carpeta o archivos sueltos; seis estados; informe HTML de verificación; compatible con paquetes de la 0.4.0.
+- **Comprobar hashes** de los archivos locales desde la sección Evidencias.
+- Descarga: un reintento ante fallos transitorios y mensajes claros para 401, 403, 404, 410, 429 y 451.
+- Configuración: espacio usado, qué permanece en el navegador, borrado selectivo y retirada del permiso general.
+
+### Seguridad
+- Política CSP explícita para las páginas de la extensión (solo scripts propios, sin `eval`, sin objetos).
+- El service worker rechaza mensajes que no procedan de páginas de la propia extensión.
+- Informes sin scripts, con CSP `default-src 'none'`, imágenes solo como `data:` y enlaces limitados a http(s) o al paquete. El visor los muestra en un marco sin permiso de scripts.
+- Sin permisos nuevos respecto de la 0.4.0.
+
+### Cambios de formato
+- El paquete tiene nueva estructura y `MANIFEST.json` pasa a `metadatos/manifest.json` (esquema 3). El verificador sigue leyendo paquetes de la 0.4.0.
+- El ZIP se llama `RASTRO_CAPTURE_<referencia>_<fecha>Z.zip`.
+
 ## 0.4.0 — 2026-09-20
 
 Rediseño de la captura, la extracción y la exportación. Verificado con 23 pruebas unitarias y 63 comprobaciones end-to-end en Chromium real (`npm run test:e2e`).

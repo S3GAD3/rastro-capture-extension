@@ -1,11 +1,14 @@
 {
   "name": "rastro-capture",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "for f in service-worker.js extractor.js sidepanel.js recorder.js src/lib/*.js src/panel/*.js src/page/*.js; do node --check $f || exit 1; done",
-    "test:e2e": "xvfb-run -a node tests/e2e/run.mjs"
-  }
+    "check": "for f in service-worker.js extractor.js sidepanel.js recorder.js report-view.js verify.js src/lib/*.js src/panel/*.js src/page/*.js; do node --check $f || exit 1; done",
+    "test:e2e": "xvfb-run -a node tests/e2e/run.mjs",
+    "examples": "node tests/make-examples.mjs"
+  },
+  "description": "RASTRO CAPTURE — Kit RASTRO. Extensión de captura y preservación de evidencias digitales.",
+  "license": "MIT"
 }

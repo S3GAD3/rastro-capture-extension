@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Informes · RASTRO CAPTURE</title>
+  <link rel="stylesheet" href="tools.css">
+</head>
+<body>
+  <div class="viewer">
+    <header class="top">
+      <img src="assets/rastro-capture-mark.png" alt="Logotipo de RASTRO CAPTURE">
+      <div><h1>RASTRO <span>CAPTURE</span></h1><p>Kit RASTRO · Visor de informes de la sesión activa</p></div>
+    </header>
+    <div class="bar">
+      <button id="modeTecnico" class="button" data-mode="tecnico">Informe técnico completo</button>
+      <button id="modeResumido" class="button" data-mode="resumido">Informe resumido para diligencias</button>
+      <span class="sep"></span>
+      <span id="state" class="state" role="status" aria-live="polite">Preparando el informe…</span>
+      <button id="print" class="button primary" disabled title="Abre el diálogo de impresión del navegador; elige «Guardar como PDF»">Imprimir / Guardar como PDF</button>
+      <button id="saveHtml" class="button" disabled>Descargar HTML</button>
+      <button id="savePdf" class="button" disabled>Descargar PDF</button>
+      <button id="refresh" class="button" disabled title="Vuelve a leer la sesión y a comprobar los hashes">Actualizar</button>
+    </div>
+    <iframe id="frame" title="Informe" sandbox="allow-same-origin allow-modals"></iframe>
+  </div>
+  <script type="module" src="report-view.js"></script>
+</body>
+</html>

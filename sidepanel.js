@@ -1,13 +1,17 @@
-import { createZipBlob } from "./src/lib/zipWriter.js";
-import { sha256Blob, sha256Hex, utf8Bytes } from "./src/lib/sha256.js";
+// RASTRO CAPTURE · panel lateral
+// Orquesta el análisis, las capturas, las descargas, la gestión de la sesión y la exportación.
+// Las operaciones sobre la pestaña se delegan en el service worker; todo el procesamiento es local.
+import { sha256Blob, sha256Hex } from "./src/lib/sha256.js";
 import { fetchMedia } from "./src/lib/mediaFetch.js";
 import * as store from "./src/lib/store.js";
-import { KIND_LABELS, safeName } from "./src/lib/paths.js";
-import { buildManifest, reportHtml, inventoryCsv, postsCsv, logCsv, verificationText, escapeHtml } from "./src/lib/report.js";
+import { KIND_LABELS, FILE_CLASS_LABELS, kindInfo, safeName, formatBytes, formatLocal } from "./src/lib/paths.js";
+import { escapeHtml, TOOL } from "./src/lib/report.js";
+import * as ctx from "./src/panel/context.js";
+import { collectSession, buildPackage } from "./src/panel/packager.js";
 
 const N = globalThis.RastroNormalize;
 const $ = (selector) => document.querySelector(selector);
-const els = Object.fromEntries(["status", "statusText", "caseRef", "caseName", "caseInvestigator", "caseUnit", "captureNote", "platformBadge", "analysis", "mediaList", "mediaCount", "evidenceList", "evidenceCount", "exportPackage", "openRecorder", "progress", "progressFill", "progressText", "cancelTask", "postList", "postCount", "postActions", "selectedCount", "downloadAllMedia", "batchReport", "optHideFixed", "optCopyDownloads", "optBatchMedia", "loadMax"].map((id) => [id, $(`#${id}`)]));
+const els = Object.fromEntries(["status", "statusText", "caseRef", "caseProceedings", "caseName", "caseObservations", "caseInvestigator", "caseUnit", "instDepartment", "instPlace", "instKeepLogo", "captureNote", "platformBadge", "analysis", "mediaList", "mediaCount", "evidenceList", "evidenceCount", "evidenceBytes", "exportPackage", "goExport", "openRecorder", "progress", "progressFill", "progressText", "cancelTask", "postList", "postCount", "postActions", "selectedCount", "downloadAllMedia", "batchReport", "optHideFixed", "optCopyDownloads", "optBatchMedia", "optIncludePdf", "optZipHash", "loadMax", "sessionId", "sessionEvidenceCount", "sessionWarning", "checkIntegrity", "openVerifier", "integritySummary", "viewTechnical", "viewSummary", "exportResult", "logoPreview", "logoFile", "logoChoose", "logoRemove", "logoInfo", "cfgEvidence", "cfgUsage", "cfgLog", "cfgAllSites", "cfgRevokeSites", "cfgVersion", "footVersion"].map((id) => [id, $(`#${id}`)]));
 
 const params = new URLSearchParams(location.search);
 const FIXED_TAB_ID = params.get("tabId") && Number.isInteger(Number(params.get("tabId"))) ? Number(params.get("tabId")) : null;
@@ -20,8 +24,13 @@ const catalog = { posts: new Map(), accounts: new Map() };
 const selected = new Set();
 let downloadedPostKeys = new Set();
 let analysisSaved = { hash: "", code: "" };
+let session = null;
+let institutionLogo = "";
+const integrityState = new Map(); // id de evidencia -> "ok" | "bad" | "missing" (última comprobación local)
 
 class Cancelled extends Error { constructor() { super("Operación cancelada por el usuario."); this.name = "Cancelled"; } }
+/** Aviso de uso (falta una selección, no hay nada que exportar…): se muestra pero no consta como incidencia. */
+class Notice extends Error { constructor(message) { super(message); this.name = "Notice"; } }
 const checkCancel = () => { if (cancelRequested) throw new Cancelled(); };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -64,31 +73,40 @@ function friendlyError(error) {
   return m;
 }
 
-const settings = { hideFixed: true, copyDownloads: true, loadMax: 60, batchMedia: true };
+const settings = { hideFixed: true, copyDownloads: true, loadMax: 60, batchMedia: true, includePdf: true, zipHash: true };
 async function loadSettings() {
   const { rastroSettings } = await chrome.storage.local.get("rastroSettings");
   Object.assign(settings, rastroSettings || {});
   els.optHideFixed.checked = settings.hideFixed; els.optCopyDownloads.checked = settings.copyDownloads; els.optBatchMedia.checked = settings.batchMedia; els.loadMax.value = settings.loadMax;
+  els.optIncludePdf.checked = settings.includePdf !== false; els.optZipHash.checked = settings.zipHash !== false;
 }
 async function saveSettings() {
   settings.hideFixed = els.optHideFixed.checked; settings.copyDownloads = els.optCopyDownloads.checked; settings.batchMedia = els.optBatchMedia.checked; settings.loadMax = Number(els.loadMax.value) || 60;
+  settings.includePdf = els.optIncludePdf.checked; settings.zipHash = els.optZipHash.checked;
   await chrome.storage.local.set({ rastroSettings: settings });
 }
 
+// Datos del expediente (solo esta sesión) y perfil institucional (reutilizable). Ver src/panel/context.js.
 function caseData() {
-  return { reference: els.caseRef.value.trim(), name: els.caseName.value.trim(), investigator: els.caseInvestigator.value.trim(), unit: els.caseUnit.value.trim() };
+  return { reference: els.caseRef.value.trim(), proceedings: els.caseProceedings.value.trim(), name: els.caseName.value.trim(), observations: els.caseObservations.value.trim(), investigator: els.caseInvestigator.value.trim(), unit: els.caseUnit.value.trim() };
 }
-async function saveCase() { await chrome.storage.local.set({ rastroCaptureCase: caseData() }); }
+function institutionData() {
+  return { unit: els.caseUnit.value.trim(), department: els.instDepartment.value.trim(), investigatorId: els.caseInvestigator.value.trim(), place: els.instPlace.value.trim(), keepLogo: els.instKeepLogo.checked };
+}
+async function saveCase() { await ctx.saveCase(caseData()); }
+async function saveInstitution() { await ctx.saveInstitution(institutionData()); }
 async function loadCase() {
-  const { rastroCaptureCase: c } = await chrome.storage.local.get("rastroCaptureCase");
-  els.caseRef.value = c?.reference || ""; els.caseName.value = c?.name || ""; els.caseInvestigator.value = c?.investigator || ""; els.caseUnit.value = c?.unit || "";
+  const c = await ctx.loadCase();
+  els.caseRef.value = c.reference; els.caseProceedings.value = c.proceedings; els.caseName.value = c.name; els.caseObservations.value = c.observations;
+}
+async function loadInstitution() {
+  const inst = await ctx.loadInstitution();
+  els.caseUnit.value = inst.unit; els.instDepartment.value = inst.department; els.caseInvestigator.value = inst.investigatorId; els.instPlace.value = inst.place; els.instKeepLogo.checked = inst.keepLogo;
+  institutionLogo = await ctx.loadLogo();
+  renderLogo();
 }
 
-const environment = () => ({
-  userAgent: navigator.userAgent, language: navigator.language, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  utcOffsetMinutes: -new Date().getTimezoneOffset(), screen: `${screen.width}x${screen.height}`, extensionVersion: chrome.runtime.getManifest().version
-});
-
+/** Registro de actividad. `extra.level`: "info" (por defecto) | "warn" | "error" (las dos últimas figuran como incidencias). */
 async function log(action, detail = "", extra = {}) {
   try { await store.addLog(action, { detail, url: targetTab?.url || "", ...extra }); } catch (error) { console.warn("log", error); }
 }
@@ -181,7 +199,7 @@ function sourceSnapshot(a, post = null) {
   return {
     platform: a.platform, pageKind: a.pageKind, contentType: a.contentType, contentId: a.contentId, username: a.username || p?.author?.username || "", displayName: a.displayName,
     url: post?.url || a.url, canonicalUrl: post?.url || a.canonicalUrl, title: a.title, publishedAt: a.publishedAt, description: a.description,
-    post: compactPost(p), account: a.account || null, analysisRef: analysisSaved.code || ""
+    post: compactPost(p), account: a.account || null, analysisRef: analysisSaved.code || "", warnings: [...(a.warnings || [])]
   };
 }
 
@@ -191,10 +209,10 @@ function analysisMarkup(a) {
   const post = a.primaryPost;
   const has = (v) => v !== null && v !== undefined;
   const cells = [
-    ["Plataforma", a.platform], ["Tipo", a.contentType], ["Usuario", a.username || post?.author?.username || "No determinado"], ["ID", a.contentId || "No detectado"],
+    ["Plataforma", a.platform, "I"], ["Tipo", a.contentType, "I"], ["Usuario", a.username || post?.author?.username || "No determinado", post?.author?.username || acc?.username ? "A" : a.username ? "I" : ""], ["ID", a.contentId || "No detectado", a.contentId ? (post ? "A" : "I") : ""],
     ...(post ? [["Fecha (plataforma)", post.takenAt || "—"], ["Métricas", [has(post.metrics.likes) ? `♥ ${post.metrics.likes}` : "", has(post.metrics.comments) ? `💬 ${post.metrics.comments}` : "", post.metrics.views ? `▶ ${post.metrics.views}` : ""].filter(Boolean).join("  ") || "—"]] : []),
     ...(acc && a.pageKind === "profile" ? [["Seguidores", acc.followers ?? acc.displayed?.followersText ?? "—"], ["Publicaciones", acc.postsCount ?? acc.displayed?.postsText ?? "—"]] : [])
-  ].map(([k, v]) => `<div class="datum"><span>${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></div>`).join("");
+  ].map(([k, v, origin]) => `<div class="datum"><span>${escapeHtml(k)}${origin ? `<i class="origin origin-${origin}" title="${origin === "I" ? "Dato inferido por la herramienta (patrón de la URL o nombre de host)" : "Dato obtenido automáticamente"}">${origin}</i>` : ""}</span><strong>${escapeHtml(v)}</strong></div>`).join("");
   const bio = acc?.bio ? `<div class="datum wide"><span>Biografía</span><p>${escapeHtml(acc.bio)}</p></div>` : "";
   const desc = post?.caption || a.description || a.visibleText;
   return `<div class="analysis-grid">${cells}<div class="datum wide"><span>URL</span><p>${escapeHtml(a.canonicalUrl)}</p></div>${bio}
@@ -263,7 +281,7 @@ async function saveEvidence({ kind, blob, slug, extension, source, details = {},
   }, blob);
   if (copy) {
     try { const downloadPath = await downloadCopy(record, blob); await store.updateEvidence(record.id, { details: { downloadPath } }); record.details = { ...record.details, downloadPath }; }
-    catch (error) { console.warn("Descarga a disco:", error); await store.updateEvidence(record.id, { details: { downloadPath: `No se pudo crear la copia en Descargas (${error.message})` } }); }
+    catch (error) { console.warn("Descarga a disco:", error); await store.updateEvidence(record.id, { details: { downloadPath: `No se pudo crear la copia en Descargas (${error.message})` } }); await log("Aviso: copia en Descargas no creada", `${record.code}: ${error.message}`, { level: "warn", code: record.code }); }
   }
   if (note) els.captureNote.value = "";
   await log(KIND_LABELS[kind], record.filename, { code: record.code });
@@ -501,7 +519,7 @@ async function downloadMany(entries, a) {
       } catch (error) {
         if (error.name === "Cancelled") throw error;
         failed++; lines.push({ text: `${label}: ${error.message}`, err: true });
-        await log("Error de descarga", `${label}: ${error.message}`);
+        await log("Error de descarga", `${label}: ${error.message}`, { level: "error" });
       }
       done++;
       setProgress(done / entries.length, `${done}/${entries.length}`);
@@ -528,7 +546,7 @@ function renderMedia(a) {
     <button class="icon-button" data-media="${i}" title="${item.downloadable ? "Descargar" : "Copiar URL"}">${item.downloadable ? "↓" : "⧉"}</button></div>`).join("");
   els.mediaList.querySelectorAll("[data-media]").forEach((button) => button.addEventListener("click", () => perform(async () => {
     const item = media[Number(button.dataset.media)];
-    if (!item.downloadable) { await navigator.clipboard.writeText(item.url); setStatus("ready", `${item.note || "Emisión"}: dirección copiada. Usa la grabación para preservarlo.`); return; }
+    if (!item.downloadable) { await navigator.clipboard.writeText(item.url); setStatus("ready", `${item.note || "Emisión"}: no es un archivo único descargable (emisión segmentada). Dirección copiada; usa el grabador de pestaña para documentarlo.`); await log("Aviso: recurso no descargable", `${item.note || "emisión segmentada"} ${String(item.url).slice(0, 300)}`, { level: "warn" }); return; }
     await downloadMany([{ item, post: a.primaryPost }], a);
   })));
 }
@@ -556,25 +574,113 @@ function renderPosts(a) {
 }
 function updateSelected() { els.selectedCount.textContent = `${selected.size} seleccionadas`; }
 
+const kindIcon = (kind) => (kind === "media-video" || kind === "recording" ? "▶" : kind === "mhtml" ? "◇" : kind === "analysis" || kind === "source-data" ? "{ }" : "◆");
+const INTEGRITY_CHIP = { ok: '<span class="chip chip-ok">Hash comprobado ✔</span>', bad: '<span class="chip chip-bad">HASH NO COINCIDE</span>', missing: '<span class="chip chip-bad">CONTENIDO AUSENTE</span>' };
+
+/** Habilita o deshabilita los controles que dependen de que existan evidencias. */
+function syncEvidenceButtons(count = Number(els.evidenceCount.textContent || 0)) {
+  for (const button of [els.exportPackage, els.goExport, els.checkIntegrity, els.viewTechnical, els.viewSummary]) button.disabled = busy || count === 0;
+}
+
+function evidenceMarkup(item) {
+  const info = kindInfo(item.kind);
+  const thumb = item.thumb && /^data:image\/jpeg;base64,/.test(item.thumb) ? `<img class="evidence-thumb" src="${escapeHtml(item.thumb)}" alt="">` : `<div class="evidence-thumb">${kindIcon(item.kind)}</div>`;
+  return `<div class="evidence-item" data-id="${escapeHtml(item.id)}">${thumb}<div class="item-copy">
+    <div class="evidence-head"><strong>${escapeHtml(item.code)} · ${escapeHtml(KIND_LABELS[item.kind] || item.type)}</strong>
+      <div class="evidence-tools"><button class="icon-button" data-act="note" title="Añadir o editar la nota del investigador">✎</button><button class="icon-button danger" data-act="delete" title="Eliminar de la sesión">×</button></div></div>
+    <div class="evidence-meta">${escapeHtml(item.filename)}</div>
+    <div class="evidence-meta">${escapeHtml(formatBytes(item.size))} · ${escapeHtml(formatLocal(item.createdAt, item.utcOffsetMinutes))}</div>
+    <div class="evidence-hash"><code title="SHA-256">${escapeHtml(item.sha256 || "—")}</code><button class="icon-button" data-act="copy" title="Copiar SHA-256">⧉</button></div>
+    <div class="chips"><span class="chip chip-class" title="${escapeHtml(info.method)}">${escapeHtml(FILE_CLASS_LABELS[info.fileClass])}</span>${INTEGRITY_CHIP[integrityState.get(item.id)] || '<span class="chip">Hash sin recomprobar</span>'}</div>
+    ${item.note ? `<div class="evidence-note" title="Dato introducido manualmente">Nota: ${escapeHtml(item.note)}</div>` : ""}
+  </div></div>`;
+}
+
 async function renderEvidence() {
   const items = await store.listEvidence();
   els.evidenceCount.textContent = String(items.length);
-  els.exportPackage.disabled = !items.length;
+  els.sessionEvidenceCount.textContent = String(items.length);
+  els.evidenceBytes.textContent = formatBytes(items.reduce((n, e) => n + (e.size || 0), 0));
+  syncEvidenceButtons(items.length);
   downloadedPostKeys = new Set(items.map((e) => e.details?.postKey).filter(Boolean));
-  if (!items.length) { els.evidenceList.className = "evidence-list empty"; els.evidenceList.textContent = "No hay evidencias guardadas en esta investigación."; return; }
+  updateSessionWarning(items);
+  if (!items.length) { els.evidenceList.className = "evidence-list empty"; els.evidenceList.textContent = "No hay evidencias guardadas en esta sesión."; els.integritySummary.hidden = true; return; }
   els.evidenceList.className = "evidence-list";
   const recent = items.slice(-150).reverse();
-  els.evidenceList.innerHTML = recent.map((item) => `<div class="evidence-item">
-    ${item.thumb ? `<img class="evidence-thumb" src="${item.thumb}" alt="">` : `<div class="evidence-thumb">${item.kind === "media-video" || item.kind === "recording" ? "▶" : item.kind === "mhtml" ? "◇" : item.kind === "analysis" || item.kind === "source-data" ? "{ }" : "◆"}</div>`}
-    <div class="item-copy"><strong>${escapeHtml(item.code)} · ${escapeHtml(KIND_LABELS[item.kind] || item.type)}</strong><span>${escapeHtml(item.filename)}</span><span>SHA-256: ${escapeHtml(item.sha256 || "—")}</span></div>
-    <button class="icon-button danger" data-delete="${escapeHtml(item.id)}" title="Eliminar">×</button></div>`).join("") + (items.length > recent.length ? `<div class="muted-small">Mostrando las ${recent.length} más recientes de ${items.length}.</div>` : "");
-  els.evidenceList.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
-    if (!confirm("¿Eliminar esta evidencia del expediente local? La acción queda anotada en el registro de actividad.")) return;
-    const item = items.find((e) => e.id === button.dataset.delete);
-    await log("Evidencia eliminada", `${item?.code} ${item?.filename} sha256=${item?.sha256}`);
-    await store.deleteEvidence(button.dataset.delete);
-    await renderEvidence();
-  }));
+  els.evidenceList.innerHTML = recent.map(evidenceMarkup).join("") + (items.length > recent.length ? `<div class="muted-small">Mostrando las ${recent.length} más recientes de ${items.length}. El paquete exportado las incluye todas.</div>` : "");
+}
+
+/** Aviso para no mezclar expedientes: evidencias incorporadas con una referencia distinta de la actual. */
+function updateSessionWarning(items) {
+  const current = els.caseRef.value.trim();
+  const others = [...new Set(items.map((e) => e.case?.reference || "").filter((r) => r && current && r !== current))];
+  els.sessionWarning.hidden = !others.length;
+  if (others.length) els.sessionWarning.textContent = `Hay evidencias incorporadas con otra referencia (${others.slice(0, 3).map((r) => `«${r}»`).join(", ")}). Si se trata de otro expediente, pulsa «Nueva sesión» para no mezclar evidencias. La discrepancia constará en el informe.`;
+}
+
+// Acciones sobre una evidencia (delegación de eventos: la lista se repinta a menudo).
+els.evidenceList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-act]");
+  const row = event.target.closest(".evidence-item");
+  if (!button || !row) return;
+  const id = row.dataset.id;
+  try {
+    const item = await store.getEvidence(id);
+    if (!item) { await renderEvidence(); return; }
+    if (button.dataset.act === "copy") {
+      await navigator.clipboard.writeText(item.sha256);
+      setStatus("ready", `SHA-256 de ${item.code} copiado al portapapeles.`);
+    } else if (button.dataset.act === "delete") {
+      if (busy) { setStatus("busy", "Hay una operación en curso. Espera a que termine para eliminar evidencias."); return; }
+      if (!confirm(`¿Eliminar ${item.code} de la sesión local? La acción queda anotada en el registro de actividad y figurará en el informe.`)) return;
+      await log("Evidencia eliminada", `${item.code} ${item.filename} sha256=${item.sha256}`, { level: "warn", code: item.code });
+      await store.deleteEvidence(id);
+      integrityState.delete(id);
+      await renderEvidence();
+    } else if (button.dataset.act === "note") {
+      const existing = row.querySelector(".note-editor");
+      if (existing) { existing.remove(); return; }
+      const editor = document.createElement("div");
+      editor.className = "note-editor";
+      const area = document.createElement("textarea");
+      area.rows = 2; area.maxLength = 2000; area.value = item.note || ""; area.placeholder = "Nota del investigador sobre esta evidencia";
+      const save = document.createElement("button");
+      save.className = "button button-secondary button-small"; save.textContent = "Guardar nota";
+      save.addEventListener("click", async () => {
+        const note = area.value.trim();
+        await store.updateEvidence(id, { note });
+        await log("Nota de evidencia modificada", `${item.code}: ${note ? "nota actualizada" : "nota eliminada"}`, { code: item.code });
+        await renderEvidence();
+      });
+      editor.append(area, save);
+      row.querySelector(".item-copy").append(editor);
+      area.focus();
+    }
+  } catch (error) { setStatus("error", friendlyError(error)); }
+});
+
+/** Recalcula el SHA-256 de cada archivo del almacén local y lo compara con el registrado al capturar. */
+async function checkIntegrity() {
+  const items = await store.listEvidence();
+  let ok = 0, bad = 0, missing = 0;
+  for (let i = 0; i < items.length; i++) {
+    checkCancel();
+    const item = items[i];
+    const blob = item.hasBlob ? await store.getBlob(item.id) : null;
+    if (!blob) { integrityState.set(item.id, "missing"); missing++; }
+    else if ((await sha256Blob(blob)) === item.sha256) { integrityState.set(item.id, "ok"); ok++; }
+    else { integrityState.set(item.id, "bad"); bad++; }
+    setProgress((i + 1) / items.length, `Comprobando ${i + 1}/${items.length}`);
+    setStatus("busy", `Recalculando hashes: ${i + 1} de ${items.length}…`);
+  }
+  setProgress(null);
+  const clean = !bad && !missing;
+  await log("Comprobación de hashes", `${items.length} archivos: ${ok} coinciden, ${bad} no coinciden, ${missing} sin contenido`, { level: clean ? "info" : "error" });
+  els.integritySummary.hidden = false;
+  els.integritySummary.className = `integrity-summary ${clean ? "ok" : "bad"}`;
+  els.integritySummary.textContent = clean ? `Los ${ok} archivos coinciden con el SHA-256 registrado al capturarlos (${formatLocal(new Date().toISOString())}).` : `Atención: ${bad} archivo(s) no coinciden y ${missing} no tienen contenido. ${ok} coinciden.`;
+  await renderEvidence();
+  setStatus(clean ? "ready" : "error", clean ? `Integridad local comprobada: ${ok} de ${items.length} archivos coinciden.` : `Integridad local: ${bad} discrepancia(s), ${missing} sin contenido.`);
 }
 
 // ------------------------------------------------------------------ Acciones de lote
@@ -604,7 +710,7 @@ async function loadMore() {
 async function downloadSelectedPostsMedia() {
   const a = lastAnalysis;
   const chosen = a.posts.filter((p) => selected.has(N.postKey(p)));
-  if (!chosen.length) throw new Error("Selecciona al menos una publicación.");
+  if (!chosen.length) throw new Notice("Selecciona al menos una publicación.");
   const entries = [];
   const missing = [];
   for (const p of chosen) {
@@ -623,7 +729,7 @@ async function downloadSelectedPostsMedia() {
 async function capturePostsBatch() {
   const a0 = lastAnalysis;
   const chosen = a0.posts.filter((p) => selected.has(N.postKey(p)) && p.url);
-  if (!chosen.length) throw new Error("Selecciona al menos una publicación.");
+  if (!chosen.length) throw new Notice("Selecciona al menos una publicación.");
   if (!(await ensureAllSites())) throw new Error("El modo lote navega entre publicaciones y necesita el permiso «acceder a todos los sitios» para capturar tras cada navegación.");
   const returnUrl = targetTab.url;
   const withMedia = els.optBatchMedia.checked;
@@ -647,14 +753,14 @@ async function capturePostsBatch() {
           const known = await knownMedia();
           for (const m of a.media.filter((x) => x.downloadable && x.role !== "avatar")) {
             try { const r = await downloadMediaItem(m, a, a.primaryPost, known); lines.push({ text: `${p.code} #${m.index}: ${r.skipped ? `omitido (${r.code})` : r.record.code}` }); }
-            catch (error) { lines.push({ text: `${p.code} #${m.index}: ${error.message}`, err: true }); }
+            catch (error) { lines.push({ text: `${p.code} #${m.index}: ${error.message}`, err: true }); await log("Error de descarga", `${p.code} #${m.index}: ${error.message}`, { level: "error" }); }
           }
         }
         lines.push({ text: `${p.code}: captura completada.` });
       } catch (error) {
         if (error.name === "Cancelled") throw error;
         lines.push({ text: `${p.code}: ${error.message}`, err: true });
-        await log("Error en lote", `${p.code}: ${error.message}`);
+        await log("Error en lote", `${p.code}: ${error.message}`, { level: "error" });
       }
       await sleep(1200);
     }
@@ -667,65 +773,174 @@ async function capturePostsBatch() {
 }
 
 // ------------------------------------------------------------------ Exportación
+async function downloadFile(blob, filename, revokeAfterMs = 600_000) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const id = await chrome.downloads.download({ url, filename, conflictAction: "uniquify", saveAs: false });
+    const [item] = await chrome.downloads.search({ id });
+    return item?.filename || filename;
+  } finally { setTimeout(() => URL.revokeObjectURL(url), revokeAfterMs); }
+}
+
 async function exportPackage() {
   setStatus("busy", "Verificando hashes y preparando el paquete…");
-  await saveCase();
+  await saveCase(); await saveInstitution();
+  if (!(await store.listEvidence()).length) throw new Notice("No hay evidencias que exportar.");
   await log("Exportación", "Inicio de la exportación del paquete");
-  const items = await store.listEvidence();
-  if (!items.length) throw new Error("No hay evidencias que exportar.");
-  const entries = [];
-  let bad = 0;
-  for (let i = 0; i < items.length; i++) {
-    checkCancel();
-    const item = items[i];
-    const blob = item.hasBlob ? await store.getBlob(item.id) : null;
-    if (!blob) { item.integrityVerified = false; bad++; continue; }
-    const hash = await sha256Blob(blob);
-    item.integrityVerified = hash === item.sha256;
-    if (!item.integrityVerified) { bad++; await log("ALERTA integridad", `${item.code} ${item.filename}: hash actual ${hash} ≠ registrado ${item.sha256}`); }
-    entries.push({ path: item.zipPath, blob, sha256: hash });
-    setProgress(((i + 1) / items.length) * 0.6, `Verificando ${i + 1}/${items.length}`);
-  }
-  const saved = await store.kvGet("catalog");
-  const catalogData = { posts: saved?.posts || [], accounts: saved?.accounts || [] };
-  const logEntries = await store.listLog();
-  const manifest = buildManifest({ caseData: caseData(), environment: environment(), evidence: items, catalog: catalogData, log: logEntries });
-  const filesByPost = {};
-  for (const item of items) if (item.details?.postKey) (filesByPost[item.details.postKey] ||= []).push(item.code);
-  const text = (path, content) => ({ path, bytes: utf8Bytes(content) });
-  const extra = [
-    text("INFORME.html", reportHtml(manifest)), text("MANIFEST.json", JSON.stringify(manifest, null, 2)), text("evidencias.csv", inventoryCsv(manifest.evidence)),
-    ...(catalogData.posts.length ? [text("publicaciones.csv", postsCsv(catalogData.posts, filesByPost))] : []),
-    text("registro-actividad.csv", logCsv(logEntries)), text("LEEME-VERIFICACION.txt", verificationText(manifest))
-  ];
-  const sums = [];
-  for (const e of entries) sums.push(`${e.sha256}  ${e.path}`);
-  for (const e of extra) sums.push(`${await sha256Hex(e.bytes)}  ${e.path}`);
-  const all = [...extra, { path: "SHA256SUMS.txt", bytes: utf8Bytes(`${sums.join("\n")}\n`) }, ...entries];
-  const { blob } = await createZipBlob(all, (n, total) => setProgress(0.6 + (n / total) * 0.4, `Empaquetando ${n}/${total}`));
-  const name = `RASTRO-CAPTURE_${safeName(manifest.case.reference || "SIN-REFERENCIA")}_${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z.zip`;
-  const url = URL.createObjectURL(blob);
-  let where = name;
+  let pkg, collected;
   try {
-    const id = await chrome.downloads.download({ url, filename: `RASTRO-CAPTURE/${name}`, conflictAction: "uniquify", saveAs: false });
-    const [d] = await chrome.downloads.search({ id });
-    where = d?.filename || where;
-  } finally { setTimeout(() => URL.revokeObjectURL(url), 600_000); setProgress(null); }
-  await store.kvSet("lastExport", { at: new Date().toISOString(), seq: items.at(-1).seq });
-  setStatus(bad ? "error" : "ready", bad ? `Paquete exportado con ${bad} archivo(s) cuya huella NO coincide o falta. Revisa el informe. ${where}` : `Paquete exportado (${items.length} evidencias, todas verificadas): ${where}`);
+    collected = await collectSession({ onProgress: (fraction, text) => setProgress(fraction * 0.6, text), checkCancel, logAlert: (detail, code) => log("ALERTA integridad", detail, { level: "error", code }) });
+    setStatus("busy", "Generando informes y empaquetando…");
+    pkg = await buildPackage(collected, { includePdf: els.optIncludePdf.checked, onProgress: (fraction, text) => setProgress(0.6 + fraction * 0.4, text) });
+  } finally { setProgress(null); }
+  const where = await downloadFile(pkg.blob, `RASTRO-CAPTURE/${pkg.name}`);
+  let sidecar = "";
+  if (els.optZipHash.checked) {
+    try { sidecar = await downloadFile(new Blob([`${pkg.sha256}  ${pkg.name}\n`], { type: "text/plain" }), `RASTRO-CAPTURE/${pkg.name}.sha256`, 120_000); }
+    catch (error) { await log("Aviso: archivo .sha256 no creado", error.message, { level: "warn" }); }
+  }
+  if (pkg.pdfError) await log("Aviso: PDF no generado", pkg.pdfError, { level: "warn" });
+  const count = collected.manifest.evidence.length;
+  await store.kvSet("lastExport", { at: new Date().toISOString(), seq: collected.manifest.evidence.at(-1).sequence, name: pkg.name, sha256: pkg.sha256 });
+  await log("Paquete exportado", `${pkg.name} · ${pkg.blob.size} bytes · SHA-256 ${pkg.sha256}`);
+  for (const e of collected.manifest.evidence) integrityState.set(e.id, e.integrityStatus === "verificada" ? "ok" : e.integrityStatus === "contenido-ausente" ? "missing" : "bad");
+  els.exportResult.hidden = false;
+  els.exportResult.replaceChildren();
+  const line = (label, value, mono = false) => { const div = document.createElement("div"); const b = document.createElement("b"); b.textContent = `${label}: `; const span = document.createElement(mono ? "code" : "span"); span.textContent = value; div.append(b, span); els.exportResult.append(div); };
+  line("Paquete", where); line("SHA-256 del ZIP", pkg.sha256, true);
+  line("Archivo de huella", sidecar || "no generado (opción desactivada)");
+  if (pkg.pdfError) line("PDF", `no generado (${pkg.pdfError})`);
+  await renderEvidence();
+  const bad = collected.bad;
+  setStatus(bad ? "error" : "ready", bad ? `Paquete exportado con ${bad} archivo(s) cuya huella NO coincide o falta. Revisa el informe. ${where}` : `Paquete exportado (${count} evidencias, todas verificadas): ${where}`);
 }
+
+async function openTool(page) {
+  await saveCase(); await saveInstitution();
+  await chrome.tabs.create({ url: chrome.runtime.getURL(page) });
+}
+
+// ------------------------------------------------------------------ Sesión
+function renderSession() {
+  els.sessionId.textContent = session?.id || "—";
+  els.sessionId.title = session ? `Sesión iniciada el ${formatLocal(session.startedAt, session.utcOffsetMinutes)}` : "";
+}
+
+function resetAnalysisUi() {
+  catalog.posts.clear(); catalog.accounts.clear(); selected.clear(); downloadedPostKeys = new Set(); analysisSaved = { hash: "", code: "" };
+  lastAnalysis = null; integrityState.clear();
+  els.analysis.className = "analysis empty"; els.analysis.textContent = "Todavía no se ha analizado la pestaña.";
+  els.platformBadge.textContent = "SIN ANALIZAR"; els.mediaCount.textContent = "0"; els.postCount.textContent = "0"; els.postActions.hidden = true; els.batchReport.hidden = true; els.downloadAllMedia.hidden = true;
+  els.mediaList.className = "media-list empty"; els.mediaList.textContent = "Analiza la página para localizar imágenes y vídeos.";
+  els.postList.className = "post-list empty"; els.postList.textContent = "Analiza un perfil o publicación para ver las publicaciones detectadas.";
+  els.exportResult.hidden = true; els.integritySummary.hidden = true;
+}
+
+/** Cierra la sesión actual (borra evidencias, registro y datos del expediente) y abre otra. El perfil institucional se conserva. */
+async function newSession() {
+  const items = await store.listEvidence();
+  const last = await store.kvGet("lastExport");
+  const pending = items.filter((e) => !last || e.seq > last.seq).length;
+  const warning = items.length ? `Se eliminarán ${items.length} evidencias locales (${pending} sin exportar).${pending ? "\n\n⚠ Hay evidencias que NO se han incluido en ningún paquete ZIP. Exporta antes de continuar." : ""}\n\n¿Iniciar una sesión nueva?` : "¿Iniciar una sesión nueva? Se vaciarán los datos del expediente; el perfil institucional se conserva.";
+  if (!confirm(warning)) return;
+  session = await store.startNewSession();
+  resetAnalysisUi();
+  for (const el of [els.caseRef, els.caseProceedings, els.caseName, els.caseObservations, els.captureNote]) el.value = "";
+  if (!els.instKeepLogo.checked) { await ctx.removeLogo(); institutionLogo = ""; renderLogo(); }
+  await saveCase(); await renderEvidence(); renderSession();
+  await log("Sesión iniciada", session.id);
+  setStatus("ready", `Nueva sesión preparada (${session.id}).`);
+}
+
+// ------------------------------------------------------------------ Personalización institucional
+function renderLogo() {
+  els.logoPreview.replaceChildren();
+  els.logoRemove.hidden = !institutionLogo;
+  els.logoChoose.textContent = institutionLogo ? "Cambiar escudo o logotipo" : "Cargar escudo o logotipo";
+  if (!institutionLogo) { els.logoPreview.className = "logo-preview empty"; els.logoPreview.textContent = "Sin escudo"; return; }
+  els.logoPreview.className = "logo-preview";
+  const img = document.createElement("img");
+  img.src = institutionLogo; img.alt = "Escudo o logotipo de la unidad";
+  els.logoPreview.append(img);
+}
+
+els.logoChoose.addEventListener("click", () => els.logoFile.click());
+els.logoFile.addEventListener("change", async () => {
+  const file = els.logoFile.files?.[0];
+  els.logoFile.value = "";
+  if (!file) return;
+  try {
+    const result = await ctx.sanitizeLogoFile(file);
+    await ctx.saveLogo(result.dataUrl);
+    institutionLogo = result.dataUrl;
+    renderLogo();
+    els.logoInfo.textContent = `${result.format} · ${result.width}×${result.height} px · guardado en este navegador`;
+    setStatus("ready", "Escudo institucional cargado. Aparecerá en el encabezado de los informes.");
+  } catch (error) { setStatus("error", error.message); }
+});
+els.logoRemove.addEventListener("click", async () => {
+  await ctx.removeLogo(); institutionLogo = ""; renderLogo();
+  els.logoInfo.textContent = "PNG, JPG o SVG · máx. 5 MB";
+  setStatus("ready", "Escudo institucional eliminado.");
+});
+
+// ------------------------------------------------------------------ Pestañas y configuración
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach((tab) => { const on = tab.dataset.tab === name; tab.classList.toggle("is-active", on); tab.setAttribute("aria-selected", String(on)); });
+  document.querySelectorAll(".view").forEach((view) => { const on = view.dataset.view === name; view.hidden = !on; view.classList.toggle("is-active", on); });
+  if (name === "config") refreshConfig().catch(console.error);
+}
+document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => showTab(tab.dataset.tab)));
+
+async function refreshConfig() {
+  const summary = await store.storageSummary();
+  els.cfgEvidence.textContent = `${summary.evidenceCount} · ${formatBytes(summary.bytes)}`;
+  els.cfgLog.textContent = String(summary.logEntries);
+  try { const estimate = await navigator.storage.estimate(); els.cfgUsage.textContent = `${formatBytes(estimate.usage || 0)}${estimate.quota ? ` de ${formatBytes(estimate.quota)} disponibles` : ""}`; }
+  catch { els.cfgUsage.textContent = "no disponible"; }
+  const all = await chrome.permissions.contains({ origins: ["<all_urls>"] }).catch(() => false);
+  els.cfgAllSites.textContent = all ? "Concedido" : "No concedido";
+  els.cfgRevokeSites.hidden = !all;
+}
+els.cfgRevokeSites.addEventListener("click", async () => {
+  try { await chrome.permissions.remove({ origins: ["<all_urls>"] }); setStatus("ready", "Permiso de acceso a todos los sitios retirado."); }
+  catch (error) { setStatus("error", `No se pudo retirar el permiso: ${error.message}`); }
+  await refreshConfig();
+});
+$("#cfgClearInstitution").addEventListener("click", async () => {
+  if (!confirm("¿Borrar el perfil institucional (unidad, dependencia, identificador, lugar) y el escudo guardados en este navegador?")) return;
+  await chrome.storage.local.remove([ctx.INSTITUTION_KEY, ctx.LOGO_KEY]);
+  for (const el of [els.caseUnit, els.instDepartment, els.caseInvestigator, els.instPlace]) el.value = "";
+  els.instKeepLogo.checked = true; institutionLogo = ""; renderLogo();
+  await saveCase();
+  setStatus("ready", "Perfil institucional borrado.");
+});
+$("#cfgClearAll").addEventListener("click", () => perform(async () => {
+  const count = (await store.listEvidence()).length;
+  if (!confirm(`¿Borrar TODOS los datos de RASTRO CAPTURE en este navegador?\n\nSe eliminarán ${count} evidencias, el registro, los datos del expediente, el perfil institucional, el escudo y las preferencias. Los archivos ya exportados o copiados en Descargas no se tocan.`)) return;
+  await store.clearAll();
+  await chrome.storage.local.clear();
+  location.reload();
+}));
 
 // ------------------------------------------------------------------ Control
 async function perform(task) {
   if (busy) { setStatus("busy", "Hay otra operación en curso. Espera a que termine o pulsa Cancelar."); return; }
   busy = true; cancelRequested = false;
-  document.querySelectorAll("button:not(#cancelTask)").forEach((b) => { b.disabled = true; });
+  const buttons = [...document.querySelectorAll("button:not(#cancelTask):not(.tab)")];
+  buttons.forEach((b) => { b.disabled = true; });
   try { await saveSettings(); await task(); }
-  catch (error) { console.error(error); setStatus(error.name === "Cancelled" ? "ready" : "error", friendlyError(error)); setProgress(null); }
+  catch (error) {
+    console.error(error);
+    const cancelled = error.name === "Cancelled";
+    setStatus(cancelled || error.name === "Notice" ? "ready" : "error", friendlyError(error)); setProgress(null);
+    // Los errores de operación y las cancelaciones constan como incidencias; las validaciones de uso, no.
+    if (error.name !== "Notice") await log(cancelled ? "Operación cancelada" : "Error de operación", friendlyError(error), { level: cancelled ? "warn" : "error" });
+  }
   finally {
     busy = false;
-    document.querySelectorAll("button:not(#cancelTask)").forEach((b) => { b.disabled = false; });
-    els.exportPackage.disabled = Number(els.evidenceCount.textContent || 0) === 0;
+    document.querySelectorAll("button:not(#cancelTask):not(.tab)").forEach((b) => { b.disabled = false; });
+    syncEvidenceButtons();
   }
 }
 
@@ -743,38 +958,46 @@ els.downloadAllMedia.addEventListener("click", () => perform(async () => {
   await downloadMany(a.media.filter((m) => m.downloadable).map((item) => ({ item, post: a.primaryPost })), a);
 }));
 els.exportPackage.addEventListener("click", () => perform(exportPackage));
+els.goExport.addEventListener("click", () => { showTab("informes"); els.exportPackage.scrollIntoView({ block: "center" }); els.exportPackage.focus(); });
+els.checkIntegrity.addEventListener("click", () => perform(checkIntegrity));
+els.openVerifier.addEventListener("click", () => openTool("verify.html").catch((error) => setStatus("error", error.message)));
+els.viewTechnical.addEventListener("click", () => openTool("report.html?mode=tecnico").catch((error) => setStatus("error", error.message)));
+els.viewSummary.addEventListener("click", () => openTool("report.html?mode=resumido").catch((error) => setStatus("error", error.message)));
 els.cancelTask.addEventListener("click", () => { cancelRequested = true; setStatus("busy", "Cancelando…"); });
 $("#selectAllPosts").addEventListener("click", () => { (lastAnalysis?.posts || []).forEach((p) => selected.add(N.postKey(p))); renderPosts(lastAnalysis); });
 $("#selectNonePosts").addEventListener("click", () => { selected.clear(); renderPosts(lastAnalysis); });
 
 els.openRecorder.addEventListener("click", () => perform(async () => {
   await refreshTargetTab();
+  await saveCase();
   const result = await send("OPEN_RECORDER");
   setStatus("ready", `Grabador abierto para ${result.host}. Sigue las instrucciones de esa ventana.`);
 }));
 
-$("#clearCase").addEventListener("click", () => perform(async () => {
-  const items = await store.listEvidence();
-  const last = await store.kvGet("lastExport");
-  const pending = items.filter((e) => !last || e.seq > last.seq).length;
-  const warning = items.length ? `Se eliminarán ${items.length} evidencias locales (${pending} sin exportar).${pending ? "\n\n⚠ Hay evidencias que NO se han incluido en ningún paquete ZIP. Exporta antes de continuar." : ""}\n\n¿Iniciar una investigación nueva?` : "¿Iniciar una investigación nueva?";
-  if (!confirm(warning)) return;
-  await store.clearAll();
-  catalog.posts.clear(); catalog.accounts.clear(); selected.clear(); downloadedPostKeys = new Set(); analysisSaved = { hash: "", code: "" };
-  lastAnalysis = null;
-  for (const el of [els.caseRef, els.caseName, els.caseInvestigator, els.caseUnit, els.captureNote]) el.value = "";
-  els.analysis.className = "analysis empty"; els.analysis.textContent = "Todavía no se ha analizado la pestaña.";
-  els.platformBadge.textContent = "SIN ANALIZAR"; els.mediaCount.textContent = "0"; els.postCount.textContent = "0"; els.postActions.hidden = true; els.batchReport.hidden = true; els.downloadAllMedia.hidden = true;
-  els.mediaList.className = "media-list empty"; els.mediaList.textContent = "Analiza la página para localizar imágenes y vídeos.";
-  els.postList.className = "post-list empty"; els.postList.textContent = "Analiza un perfil o publicación para ver las publicaciones detectadas.";
-  await saveCase(); await renderEvidence(); await log("Nueva investigación", "Expediente local reiniciado"); setStatus("ready", "Nueva investigación preparada.");
+$("#clearCase").addEventListener("click", () => perform(newSession));
+$("#cfgClearSession").addEventListener("click", () => perform(newSession));
+
+// Guardado automático de los campos manuales (expediente e institución por separado).
+let caseTimer, institutionTimer;
+[els.caseRef, els.caseProceedings, els.caseName, els.caseObservations].forEach((input) => input.addEventListener("input", () => {
+  clearTimeout(caseTimer);
+  caseTimer = setTimeout(async () => { await saveCase(); if (input === els.caseRef) updateSessionWarning(await store.listEvidence()); }, 300);
 }));
+[els.caseUnit, els.instDepartment, els.caseInvestigator, els.instPlace, els.instKeepLogo].forEach((input) => input.addEventListener(input.type === "checkbox" ? "change" : "input", () => { clearTimeout(institutionTimer); institutionTimer = setTimeout(saveInstitution, 300); }));
+[els.optIncludePdf, els.optZipHash, els.optHideFixed, els.optCopyDownloads, els.optBatchMedia].forEach((input) => input.addEventListener("change", () => saveSettings().catch(console.error)));
 
-let saveTimer;
-[els.caseRef, els.caseName, els.caseInvestigator, els.caseUnit].forEach((input) => input.addEventListener("input", () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveCase, 300); }));
-
+// ------------------------------------------------------------------ Inicio
+const version = chrome.runtime.getManifest().version;
+els.cfgVersion.textContent = `v${version}`;
+els.footVersion.textContent = `v${version} · Procesamiento local · SHA-256`;
+if (version !== TOOL.version) console.warn(`RASTRO: versión del manifest (${version}) distinta de la del generador de informes (${TOOL.version}).`);
+await loadInstitution();
 await loadCase();
 await loadSettings();
+const hadSession = Boolean(await store.getSession());
+session = await store.ensureSession();
+renderSession();
+if (!hadSession) await log("Sesión iniciada", session.id);
 const savedCatalog = await store.kvGet("catalog");
 for (const p of savedCatalog?.posts || []) catalog.posts.set(N.postKey(p), p);
 for (const a of savedCatalog?.accounts || []) catalog.accounts.set(`${a.platform}:${a.username.toLowerCase()}`, a);

@@ -1,109 +1,132 @@
 # RASTRO CAPTURE
 
-Extensión Chromium para capturar, contextualizar y conservar contenido web durante investigaciones OSINT. La versión 0.4.0 está optimizada para publicaciones, reels, vídeos y perfiles de **Instagram** y **TikTok**.
+**Kit RASTRO — Herramientas de Investigación de Fuentes Abiertas** · Creado por **S3GAD3**
 
-![Previsualización del panel lateral de RASTRO CAPTURE](docs/captura-rastro-capture.png)
+Extensión para navegadores Chromium que captura, contextualiza y preserva contenido web y de redes sociales durante investigaciones OSINT/SOCMINT. Calcula el SHA-256 de cada archivo, registra las operaciones, genera informes institucionales y exporta un paquete de evidencias autocontenido y verificable. Todo el procesamiento es local.
 
-> **Ámbito:** herramienta de apoyo a la documentación y preservación local. No evita autenticación, controles de acceso, cifrado ni DRM, y no sustituye los procedimientos de obtención, aseguramiento o incorporación de evidencia aplicables en cada organización.
+Versión 0.5.0. Optimizada para publicaciones, reels, vídeos y perfiles de Instagram y TikTok; funciona también en webs genéricas.
 
-## Cómo funciona
+## Finalidad técnica de las funciones
 
-RASTRO CAPTURE se abre como panel lateral sobre la pestaña que el investigador decide analizar. La extensión lee el contenido y los metadatos que esa página ya ha entregado al navegador, permite seleccionar el tipo de captura y conserva cada resultado en el almacenamiento local del perfil. Al exportar, recalcula las huellas SHA-256 y genera un ZIP autocontenido con los originales, inventario, informe y registro de actividad.
+| Función | Para qué sirve en una investigación |
+|---|---|
+| **Analizar página** | Identifica URL, plataforma, cuenta, publicación, fecha, texto, métricas y medios accesibles, a partir de los datos que la plataforma entrega al navegador y, en su defecto, del DOM. |
+| **Capturas** (vista visible, publicación, página completa) | Documenta lo que se mostraba en pantalla. Las capturas largas se componen por tramos y se dividen en partes. |
+| **MHTML / datos JSON** | Conserva una copia navegable de la página y los datos de origen recibidos por ella. |
+| **Descarga de imágenes y vídeos** | Obtiene los archivos tal como los sirve el origen (sin transformar), validados por firma binaria y estructura. |
+| **Perfiles** | Carga más publicaciones, permite seleccionarlas, descargar sus medios en bloque o abrir y capturar cada una. |
+| **Grabador de pestaña** | Documenta vídeos no descargables (HLS/DASH, fuentes internas) o una navegación. |
+| **Sesión** | Agrupa las evidencias de un expediente bajo un identificador único y evita mezclar investigaciones. |
+| **SHA-256 y manifiesto** | Permiten comprobar después que ningún archivo ha cambiado. |
+| **Informes** | Informe técnico completo e informe resumido para diligencias, con el escudo de la unidad, en HTML autónomo y PDF. |
+| **Verificar integridad** | Comprueba un paquete ya exportado: coincidencias, archivos modificados, ausentes o añadidos. |
 
-No utiliza servidor propio, cuentas externas, telemetría ni código remoto. Las peticiones necesarias para descargar un archivo multimedia se realizan directamente contra el servidor que ya aloja ese recurso.
+## Instalación (Chrome, Edge, Brave, Opera · versión 116 o posterior)
 
-## Funciones
-
-- Panel lateral con análisis de plataforma, cuenta, publicación, fecha, texto, hashtags, menciones, métricas y **todos los medios** (incluidas las diapositivas de un carrusel), obtenidos de los datos que la propia plataforma entrega al navegador y, si no están, del DOM.
-- **Capturas**: vista visible, elemento/publicación, página completa (con scroll de ventana o de contenedor interno; se divide en partes si es muy larga), MHTML y datos JSON de origen.
-- **Perfiles**: cargar más publicaciones (auto-scroll), listado con selección, descarga masiva de imágenes y vídeos por publicación y modo lote «abrir y capturar cada seleccionada».
-- **Webs genéricas**: imágenes (también diferidas), vídeos `<video>`/`<source>`, JSON-LD y Open Graph.
-- Descarga con validación por firma binaria y estructura (MP4/WebM, imágenes), cabeceras HTTP guardadas y deduplicación.
-- Grabador de pestaña (WebM) para vídeos no descargables (HLS/DASH, fuentes internas).
-- Registro de actividad, SHA-256 de cada archivo y verificación de todos los hashes al exportar.
-- **Paquete ZIP**: `INFORME.html` imprimible, `MANIFEST.json`, CSV de evidencias/publicaciones/actividad, `SHA256SUMS.txt`, `LEEME-VERIFICACION.txt` y los originales en `capturas/`, `paginas-mhtml/`, `medios/<plataforma>/<usuario>/<publicación>/`, `grabaciones/`, `datos-origen/`.
-- Procesamiento local, sin servidor ni telemetría.
-
-## Instalación en Chrome, Edge, Brave u Opera
-
-1. Descomprime el ZIP.
-2. Abre `chrome://extensions`, `edge://extensions` u `opera://extensions`, según el navegador.
+1. Descomprime el ZIP de la extensión.
+2. Abre `chrome://extensions` (o `edge://extensions`, `brave://extensions`, `opera://extensions`).
 3. Activa **Modo de desarrollador**.
-4. Pulsa **Cargar descomprimida**.
-5. Selecciona la carpeta `rastro-capture-v0.4.0` que contiene `manifest.json`.
-6. Fija el icono de RASTRO CAPTURE en la barra del navegador.
+4. Pulsa **Cargar descomprimida** y selecciona la carpeta `rastro-capture-v0.5.0` (la que contiene `manifest.json`).
+5. Fija el icono de RASTRO CAPTURE en la barra. Al pulsarlo se abre el panel lateral.
 
-La extensión utiliza Manifest V3 y requiere Chromium 116 o posterior. Para instalar una actualización manual, sustituye la carpeta por la nueva versión y pulsa **Recargar** en la ficha de la extensión.
+Si actualizas desde la 0.4.0, carga la carpeta nueva en lugar de la anterior: las evidencias locales se conservan y los datos de unidad e investigador pasan al perfil institucional.
 
-## Uso básico
+> Compatibilidad comprobada: las pruebas automáticas se ejecutan en Chromium 153 (Chrome for Testing). Edge, Brave y Opera comparten el mismo motor y las mismas API, pero no se han probado uno a uno; Firefox y Safari no son compatibles (la extensión usa el panel lateral y API específicas de Chromium).
 
-1. Abre la publicación, reel, vídeo o perfil. **Si acabas de instalar o actualizar la extensión, recarga la página (F5)** para que el recolector vea todo el tráfico.
-2. Pulsa el icono de RASTRO CAPTURE y rellena referencia, investigador y unidad.
-3. **Analizar página actual** y comprueba plataforma, cuenta, ID, texto y medios.
-4. En un perfil: **Cargar** (hasta N publicaciones), selecciona publicaciones y usa **Descargar imágenes y vídeos** o **Abrir y capturar cada seleccionada**.
-5. Captura: **Publicación completa**, **Vista visible**, **Página completa**, **MHTML** y **Guardar datos de la página**.
-6. Si un vídeo aparece como no descargable, usa **Abrir grabador de pestaña** y selecciona la pestaña de Instagram/TikTok (no la ventana de RASTRO).
-7. **Exportar paquete ZIP e informe HTML**. Conserva el ZIP sin modificar.
+## Manual breve
 
-El navegador pedirá una vez el permiso opcional «acceder a todos los sitios» cuando haga falta (modo lote, otras webs).
+El panel tiene una cabecera fija con la **sesión activa** (identificador, número de evidencias, referencia y diligencias) y cuatro secciones.
 
-## Permisos
+**CAPTURA**
+1. Abre la publicación, perfil o página. Tras instalar o actualizar, recarga la página (F5).
+2. **Analizar página actual** y comprueba plataforma, usuario, identificador y medios. Las etiquetas `A` e `I` indican si el dato es automático o inferido.
+3. Escribe, si procede, una nota para la próxima captura.
+4. Captura: **Publicación completa**, **Vista visible**, **Página completa**, **MHTML**, **Datos (JSON)**.
+5. Descarga los medios desde *Multimedia de esta página* o, en un perfil, desde *Publicaciones detectadas*.
+6. Si un vídeo figura como no descargable, usa **Abrir grabador de pestaña**.
 
-| Permiso | Finalidad |
-| --- | --- |
-| `activeTab`, `tabs`, `scripting` | Analizar y operar sobre la pestaña elegida por el usuario. |
-| `sidePanel` | Mostrar la interfaz principal como panel lateral. |
-| `pageCapture` | Generar la copia MHTML de la página. |
-| `desktopCapture` | Grabar una pestaña cuando el usuario inicia expresamente el grabador. |
-| `downloads` | Guardar el paquete exportado y, si se activa, copias de los archivos. |
-| `storage`, `unlimitedStorage` | Mantener localmente la investigación y sus evidencias hasta exportarlas o eliminarlas. |
-| `declarativeNetRequest` | Ajustar el `Referer` únicamente en descargas iniciadas por la extensión hacia los CDN declarados de Instagram y TikTok. |
-| Acceso opcional a sitios | Analizar webs distintas de Instagram/TikTok, ejecutar el modo lote y descargar medios desde sus orígenes. Se solicita durante la acción que lo necesita. |
+**EVIDENCIAS** — Lista con miniatura, tamaño, fecha, clase (original, captura generada o derivado) y SHA-256 completo. Permite copiar el hash, añadir una nota, eliminar una evidencia (queda registrado), **Comprobar hashes** de los archivos locales y abrir **Verificar integridad**.
+
+**INFORMES** — Personalización institucional, datos del expediente, visor de informes y exportación del paquete.
+
+**CONFIG.** — Espacio usado, qué datos permanecen en el navegador, borrado de datos y permisos.
+
+## Personalización institucional
+
+En **INFORMES › Personalización institucional**:
+
+- **Escudo o logotipo de la unidad**: PNG, JPG o SVG (máx. 5 MB). Puedes verlo, cambiarlo o eliminarlo. Al cargarlo se rasteriza a PNG: un SVG nunca se guarda ni se incrusta con contenido activo.
+- **Unidad investigadora**, **dependencia o grupo**, **identificador profesional** y **lugar de actuación** (opcional).
+- **Conservar el escudo para futuras sesiones**: si lo desmarcas, se borra al iniciar otra sesión.
+
+Estos datos son **reutilizables**. Los **datos del expediente** (referencia, n.º de diligencias, denominación y observaciones generales) pertenecen solo a la sesión en curso y se vacían con **Nueva sesión**, para no arrastrar información de una investigación a otra. Todo se guarda únicamente en el navegador.
+
+## Generación de informes
+
+- **Informe técnico** e **Informe resumido** abren el visor. Desde él puedes cambiar de modalidad, **Imprimir / Guardar como PDF** (diálogo del navegador), **Descargar HTML** (autónomo, sin recursos externos) o **Descargar PDF** (generado localmente).
+- **Exportar paquete ZIP con informes** incluye ambos informes en HTML y, si está marcada la opción, en PDF.
+
+| | Informe técnico completo | Informe resumido para diligencias |
+|---|---|---|
+| Contenido | 1 Actuación · 2 Recurso · 3 Descripción técnica · 4 Relación de evidencias · 5 Integridad · 6 Cronología · 7 Observaciones · 8 Limitaciones · 9 Anexo con vistas previas | Actuación · recurso · operaciones realizadas · archivos y hashes · incidencias · observaciones · referencia al paquete |
+| Uso | Documento de respaldo técnico | Texto breve para incorporar a las diligencias |
+
+En ambos, el escudo de la unidad va en el encabezado y el logotipo de RASTRO CAPTURE en el pie, incrustados en el propio documento. Cada dato lleva su procedencia: **A** automático, **M** introducido manualmente, **I** inferido (con su fundamento). Los informes describen hechos técnicos; no afirman autoría ni autenticidad.
+
+Ejemplos con datos ficticios en [`docs/ejemplos/`](docs/ejemplos/).
+
+## Paquete de evidencias
+
+```
+RASTRO_CAPTURE_<referencia>_<fecha>Z/
+├── evidencias/            archivos sin modificar (capturas/, medios/, paginas-mhtml/, grabaciones/, datos-origen/)
+├── informes/              informe_tecnico.html · informe_resumido.html · (.pdf)
+├── registros/             actividad.json · actividad.csv · evidencias.csv · publicaciones.csv
+├── metadatos/             manifest.json · SHA256SUMS.txt
+└── README_EVIDENCIAS.txt
+```
+
+Junto al ZIP se descarga `<paquete>.zip.sha256` con el SHA-256 del ZIP. Va fuera del ZIP porque incluirlo dentro alteraría los bytes sobre los que se calcula. Consigna ese valor en las diligencias.
+
+`manifest.json` recoge, por evidencia: identificador, ruta, tamaño, MIME, SHA-256, fecha, URL de origen, método de captura, advertencias y clase (**original** = bytes servidos por el origen; **captura** = generado al capturar; **derivado** = elaborado a partir de otros datos).
+
+## Verificar evidencias
+
+**Con la extensión**: EVIDENCIAS › **Verificar integridad**. Elige el ZIP (y su `.sha256`), la carpeta extraída o archivos sueltos con su `manifest.json`. Resultados posibles: coincidencia correcta, hash diferente, archivo ausente, archivo adicional no declarado, error de lectura y manifiesto inválido. Puedes guardar un informe HTML de la verificación.
+
+**Con el sistema operativo**, en la carpeta extraída:
+
+```
+sha256sum -c metadatos/SHA256SUMS.txt        # Linux
+shasum -a 256 -c metadatos/SHA256SUMS.txt    # macOS
+Get-FileHash -Algorithm SHA256 <archivo>     # Windows PowerShell
+sha256sum -c <paquete>.zip.sha256            # huella del ZIP completo
+```
+
+La coincidencia de hashes acredita la integridad respecto del manifiesto. No acredita por sí misma quién creó el contenido ni cuándo se publicó.
 
 ## Limitaciones conocidas
 
-- Instagram y TikTok cambian su estructura interna con frecuencia; los selectores deberán mantenerse.
-- La extensión analiza exclusivamente el contenido que el navegador del investigador puede mostrar.
-- No evita autenticación, controles de acceso, cifrado ni DRM.
-- Algunas direcciones multimedia son temporales, requieren la sesión original o caducan rápidamente.
-- HLS y DASH se detectan, pero no se unen sus segmentos: usa la grabación de pestaña.
-- **Verificado con réplicas locales** de Instagram y TikTok (`npm run test:e2e`). Las plataformas cambian su API sin aviso: el normalizador detecta por la forma de los datos para tolerarlo, pero conviene validar con una cuenta real tras cada cambio importante y consultar el CHANGELOG.
-- Los enlaces de medios caducan (la caducidad se registra si figura en la URL). Descarga y exporta sin demora.
-- El WebM del grabador no incluye índice de búsqueda; se reproduce pero puede no permitir saltos en algunos reproductores.
-- Una URL detectada no garantiza que el servidor entregue un archivo de vídeo completo. La extensión solo guarda vídeos cuya firma binaria corresponde a MP4 o WebM.
-- La ventana del grabador debe permanecer abierta hasta que aparezca la confirmación de guardado.
-- La captura de página completa es vertical. Páginas extremadamente largas deben dividirse en varias capturas.
-- MHTML es una copia complementaria y no garantiza que las aplicaciones dinámicas funcionen posteriormente.
-- El hash demuestra si un archivo exportado cambia después de generarse; no aporta por sí solo sellado temporal cualificado ni sustituye las diligencias o procedimientos de preservación aplicables.
+- Instagram y TikTok cambian su estructura interna con frecuencia. La extracción está verificada con réplicas locales (`npm run test:e2e`), no con las plataformas reales: valida con una cuenta real tras cambios importantes.
+- Solo se captura lo que el navegador del investigador puede mostrar. No se eluden autenticación, controles de acceso, cifrado ni DRM.
+- Los enlaces de medios caducan; descarga y exporta sin demora.
+- HLS y DASH se detectan pero no se unen: usa el grabador. El WebM resultante no tiene índice de búsqueda.
+- Las fechas proceden del reloj del equipo. No hay sellado de tiempo cualificado.
+- El PDF generado localmente usa fuentes estándar: emojis y alfabetos no latinos se sustituyen por «?» (se advierte en el propio PDF). El HTML conserva el texto íntegro.
+- El grabador de pestaña requiere interacción con el selector del navegador y no está cubierto por las pruebas automáticas.
+- ZIP clásico: máximo 3,75 GB por paquete. Medios de más de 500 MB no se descargan.
 
-## Privacidad
+## Desarrollo y pruebas
 
-La extensión no envía información a servidores propios ni de terceros. La investigación y sus capturas se guardan localmente en el perfil del navegador hasta que se eliminan o exportan. Consulta [PRIVACY.md](PRIVACY.md).
-
-## Desarrollo y verificación
-
-No hay proceso de compilación ni dependencias de ejecución: el código del repositorio es el que carga el navegador.
-
-```bash
-npm test
-npm run check
+```
+npm test            # 49 pruebas unitarias (Node 20+), sin dependencias
+npm run check       # comprobación de sintaxis
+npm run test:e2e    # 150 comprobaciones en Chromium real (ver tests/e2e/README.md)
+npm run examples    # regenera docs/ejemplos
 ```
 
-Las pruebas end-to-end y sus requisitos se documentan en [`tests/e2e/README.md`](tests/e2e/README.md). Para comunicar una vulnerabilidad, consulta [SECURITY.md](SECURITY.md) y no adjuntes datos reales de investigaciones.
-
-## Estructura principal
-
-- `manifest.json`: configuración y permisos de la extensión.
-- `sidepanel.*`: interfaz y flujo operativo principal.
-- `service-worker.js`: operaciones controladas sobre la pestaña objetivo.
-- `extractor.js` y `src/page/`: extracción y normalización de datos visibles o recibidos por la página.
-- `src/lib/`: almacenamiento, hashes, validación multimedia, informe y escritor ZIP.
-- `recorder.*`: grabación iniciada por el usuario.
-- `tests/`: pruebas unitarias y end-to-end.
-- `docs/GUIA-DEL-INVESTIGADOR.md`: guía operativa ampliada.
+Sin dependencias de terceros en tiempo de ejecución. Consulta [CHANGELOG.md](CHANGELOG.md), [docs/GUIA-DEL-INVESTIGADOR.md](docs/GUIA-DEL-INVESTIGADOR.md), [docs/PRUEBAS.md](docs/PRUEBAS.md), [PRIVACY.md](PRIVACY.md) y [SECURITY.md](SECURITY.md).
 
 ## Licencia
 
-MIT. Consulta [LICENSE](LICENSE).
-
-El proyecto no está afiliado, patrocinado ni respaldado por Meta, Instagram, ByteDance o TikTok. Las marcas citadas pertenecen a sus respectivos titulares. El uso de la herramienta debe ajustarse a la legislación, a las condiciones aplicables y a la autorización de la investigación.
+MIT. Consulta [LICENSE](LICENSE) y [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

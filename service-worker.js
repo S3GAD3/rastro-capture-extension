@@ -271,7 +271,13 @@ async function analyze(tab) {
   return { dom, harvest };
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+// Solo se atienden mensajes de las páginas de la propia extensión (panel, grabador, visor). Los scripts
+// inyectados en páginas web se ejecutan en el mundo MAIN y no tienen acceso a chrome.runtime.
+const EXTENSION_ORIGIN = chrome.runtime.getURL("").replace(/\/$/, "");
+const trustedSender = (sender) => sender?.id === chrome.runtime.id && !sender.tab?.url?.match(/^https?:/i) && (sender.url || sender.origin || "").startsWith(EXTENSION_ORIGIN);
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!trustedSender(sender)) { sendResponse({ ok: false, error: "Origen de mensaje no autorizado." }); return false; }
   (async () => {
     const tab = await messageTab(message);
     switch (message?.type) {

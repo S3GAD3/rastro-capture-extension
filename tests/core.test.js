@@ -45,11 +45,11 @@ test("rechaza HTML o JSON renombrado como vídeo", () => {
 });
 
 test("el paquete contiene todos los módulos y páginas de ejecución", () => {
-  for (const file of ["manifest.json", "sidepanel.js", "recorder.html", "recorder.js", "extractor.js", "src/lib/sha256.js", "src/lib/zipWriter.js", "src/lib/mediaValidation.js", "src/lib/store.js", "src/lib/report.js", "src/page/normalize.js", "src/page/hook.js"]) {
+  for (const file of ["manifest.json", "sidepanel.html", "sidepanel.js", "styles.css", "recorder.html", "recorder.js", "recorder.css", "report.html", "report-view.js", "verify.html", "verify.js", "tools.css", "service-worker.js", "extractor.js", "src/lib/sha256.js", "src/lib/zipWriter.js", "src/lib/zipReader.js", "src/lib/mediaValidation.js", "src/lib/mediaFetch.js", "src/lib/store.js", "src/lib/paths.js", "src/lib/report.js", "src/lib/pdf.js", "src/lib/verify.js", "src/panel/context.js", "src/panel/packager.js", "src/page/normalize.js", "src/page/hook.js", "assets/rastro-capture-mark.png", "assets/rastro-capture-logo.jpg", "assets/rastro-capture-logo-report.jpg", "icons/icon16.png", "icons/icon128.png"]) {
     assert.equal(existsSync(new URL(`../${file}`, import.meta.url)), true, `Falta ${file}`);
   }
   const manifest = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
-  assert.equal(manifest.version, "0.4.0");
+  assert.equal(manifest.version, "0.5.0");
   assert.equal(manifest.permissions.includes("tabCapture"), false);
   assert.equal(manifest.permissions.includes("desktopCapture"), true);
   const panel = readFileSync(new URL("../sidepanel.js", import.meta.url), "utf8");
@@ -105,8 +105,9 @@ test("CSV neutraliza fórmulas y escapa separadores", () => {
 test("el informe escapa contenido de terceros y no admite enlaces javascript:", () => {
   const evil = '<img src=x onerror=alert(1)>';
   const manifest = buildManifest({ caseData: { reference: evil }, evidence: [{ code: "EV-0001", seq: 1, id: "1", kind: "screenshot-visible", type: "x", filename: "a.png", zipPath: "capturas/a.png", mime: "image/png", size: 10, sha256: "a".repeat(64), createdAt: "2026-01-01T00:00:00Z", integrityVerified: true, source: { platform: "Web", url: "javascript:alert(1)", description: evil, post: { caption: evil, hashtags: [], mentions: [], taggedUsers: [], metrics: {}, media: [] } }, details: {} }] });
-  const html = reportHtml(manifest);
+  const html = reportHtml(manifest) + reportHtml(manifest, { mode: "resumido" });
   assert.doesNotMatch(html, /<img src=x/);
+  assert.doesNotMatch(html, /<script/i);
   assert.doesNotMatch(html, /href="javascript:/);
   assert.match(html, /Content-Security-Policy/);
   assert.equal(escapeHtml("<&>"), "&lt;&amp;&gt;");

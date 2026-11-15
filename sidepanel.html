@@ -8,104 +8,210 @@
 </head>
 <body>
   <header class="app-header">
-    <img src="assets/rastro-logo.jpg" alt="RASTRO" class="brand-logo">
+    <img src="assets/rastro-capture-mark.png" alt="Logotipo de RASTRO CAPTURE" class="brand-logo">
     <div class="brand-copy">
-      <span class="eyebrow">KIT DE INVESTIGACIÓN DE FUENTES ABIERTAS</span>
-      <h1>RASTRO CAPTURE</h1>
-      <p>Captura y preservación de contenido web</p>
+      <h1>RASTRO <span>CAPTURE</span></h1>
+      <p>Kit RASTRO · Captura y preservación de evidencias digitales</p>
     </div>
   </header>
+
+  <section class="session-bar" aria-label="Sesión activa">
+    <div class="session-line">
+      <span class="session-label">SESIÓN ACTIVA</span>
+      <strong id="sessionId" class="session-id" title="Identificador único de la sesión">—</strong>
+      <span class="session-count"><b id="sessionEvidenceCount">0</b> evidencias</span>
+      <button id="clearCase" class="button button-ghost button-small" title="Cerrar esta sesión e iniciar otra vacía">Nueva sesión</button>
+    </div>
+    <div class="session-fields">
+      <label>Referencia del expediente<input id="caseRef" maxlength="80" placeholder="Ej. EXP-2026-014" autocomplete="off"></label>
+      <label>N.º de diligencias<input id="caseProceedings" maxlength="80" placeholder="Ej. 1234/2026" autocomplete="off"></label>
+    </div>
+    <div id="sessionWarning" class="warning" hidden></div>
+  </section>
 
   <div id="status" class="status status-ready" role="status" aria-live="polite">
     <span class="status-dot"></span><strong>LISTO</strong><span id="statusText">Abre una publicación, perfil o página web.</span>
   </div>
-  <div id="progress" class="progress" hidden>
+  <div id="progress" class="jobbar" hidden>
     <div class="progress-bar"><i id="progressFill"></i></div>
     <span id="progressText"></span>
     <button id="cancelTask" class="button button-danger button-small">Cancelar</button>
   </div>
 
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button class="tab is-active" role="tab" aria-selected="true" data-tab="captura" id="tab-captura">CAPTURA</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="evidencias" id="tab-evidencias">EVIDENCIAS <span id="evidenceCount" class="counter">0</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="informes" id="tab-informes">INFORMES</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="config" id="tab-config" title="Configuración">CONFIG.</button>
+  </nav>
+
   <main>
-    <section class="panel">
-      <div class="panel-heading">
-        <div><span class="step">01</span><h2>Investigación</h2></div>
-        <button id="clearCase" class="button button-ghost button-small">Nueva</button>
-      </div>
-      <div class="form-grid">
-        <label>Referencia<input id="caseRef" maxlength="80" placeholder="Ej. EXP-2026-014"></label>
-        <label>Investigación<input id="caseName" maxlength="160" placeholder="Nombre opcional"></label>
-        <label>Investigador<input id="caseInvestigator" maxlength="120" placeholder="Nombre / TIP"></label>
-        <label>Unidad<input id="caseUnit" maxlength="160" placeholder="Unidad / grupo"></label>
-        <label class="full">Nota para la próxima captura<textarea id="captureNote" rows="2" maxlength="2000" placeholder="Contexto u observaciones del investigador"></textarea></label>
-      </div>
-    </section>
+    <!-- ============================== CAPTURA ============================== -->
+    <div class="view is-active" data-view="captura" role="tabpanel" aria-labelledby="tab-captura">
+      <section class="panel accent">
+        <div class="panel-heading"><h2>Analizar contenido</h2><span id="platformBadge" class="badge">SIN ANALIZAR</span></div>
+        <button id="analyze" class="button button-primary button-wide">Analizar página actual</button>
+        <div id="analysis" class="analysis empty">Todavía no se ha analizado la pestaña. El análisis detecta plataforma, cuenta, publicación, metadatos y los medios accesibles.</div>
+      </section>
 
-    <section class="panel accent">
-      <div class="panel-heading"><div><span class="step">02</span><h2>Analizar contenido</h2></div><span id="platformBadge" class="badge">SIN ANALIZAR</span></div>
-      <p class="help">Detecta plataforma, cuenta, publicación, metadatos y todos los medios accesibles (incluidas las diapositivas de un carrusel).</p>
-      <button id="analyze" class="button button-primary button-wide">Analizar página actual</button>
-      <div id="analysis" class="analysis empty">Todavía no se ha analizado la pestaña.</div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><span class="step">03</span><h2>Capturar</h2></div></div>
-      <div class="action-grid">
-        <button id="capturePost" class="action-card"><span class="action-icon">▣</span><strong id="capturePostLabel">Publicación completa</strong><small>Recorre y une el elemento detectado</small></button>
-        <button id="captureVisible" class="action-card"><span class="action-icon">▤</span><strong>Vista visible</strong><small>Exactamente lo mostrado en pantalla</small></button>
-        <button id="capturePage" class="action-card"><span class="action-icon">↕</span><strong>Página completa</strong><small>Desplaza y une; se divide en partes si es muy larga</small></button>
-        <button id="saveMhtml" class="action-card"><span class="action-icon">◇</span><strong>Guardar MHTML</strong><small>Copia navegable, con hash y en el expediente</small></button>
-        <button id="saveData" class="action-card wide"><span class="action-icon">{ }</span><strong>Guardar datos de la página (JSON)</strong><small>Ficha de análisis + datos de origen de la plataforma</small></button>
-      </div>
-      <div class="options">
-        <label class="check"><input type="checkbox" id="optHideFixed" checked> Ocultar barras fijas y avisos al unir tramos</label>
-        <label class="check"><input type="checkbox" id="optCopyDownloads" checked> Guardar también cada archivo en Descargas/RASTRO-CAPTURE</label>
-      </div>
-      <div class="record-row">
-        <button id="openRecorder" class="button button-danger button-wide">● Abrir grabador de pestaña</button>
-      </div>
-      <p class="fineprint">El grabador se usa para vídeos que no se pueden descargar directamente (HLS/DASH, fuentes internas) o para documentar una navegación.</p>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><span class="step">04</span><h2>Cargar más contenido</h2></div></div>
-      <p class="help">Desplaza la página automáticamente para cargar más publicaciones de un perfil (o contenido diferido) antes de capturar o descargar.</p>
-      <div class="inline-row">
-        <label class="inline">Hasta <input id="loadMax" type="number" min="6" max="2000" value="60"> publicaciones</label>
-        <button id="loadMore" class="button button-secondary">Cargar</button>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><span class="step">05</span><h2>Publicaciones detectadas</h2></div><span id="postCount" class="counter">0</span></div>
-      <div id="postList" class="post-list empty">Analiza un perfil o publicación para ver las publicaciones detectadas.</div>
-      <div id="postActions" class="stack" hidden>
-        <div class="inline-row">
-          <button id="selectAllPosts" class="button button-ghost button-small">Seleccionar todas</button>
-          <button id="selectNonePosts" class="button button-ghost button-small">Ninguna</button>
-          <span id="selectedCount" class="muted-small">0 seleccionadas</span>
+      <section class="panel">
+        <div class="panel-heading"><h2>Capturar</h2></div>
+        <label class="note-field">Nota para la próxima captura (dato manual)<textarea id="captureNote" rows="2" maxlength="2000" placeholder="Contexto u observaciones del investigador sobre lo que se va a capturar"></textarea></label>
+        <div class="action-grid">
+          <button id="capturePost" class="action-card"><span class="action-icon">▣</span><strong id="capturePostLabel">Publicación completa</strong><small>Recorre y une el elemento detectado</small></button>
+          <button id="captureVisible" class="action-card"><span class="action-icon">▤</span><strong>Vista visible</strong><small>Exactamente lo mostrado en pantalla</small></button>
+          <button id="capturePage" class="action-card"><span class="action-icon">↕</span><strong>Página completa</strong><small>Desplaza y une; se divide si es muy larga</small></button>
+          <button id="saveMhtml" class="action-card"><span class="action-icon">◇</span><strong>Guardar MHTML</strong><small>Copia navegable de la página, con hash</small></button>
+          <button id="saveData" class="action-card wide"><span class="action-icon">{ }</span><strong>Guardar datos de la página (JSON)</strong><small>Ficha de análisis + datos de origen de la plataforma</small></button>
         </div>
-        <button id="downloadPostsMedia" class="button button-primary button-wide">Descargar imágenes y vídeos de las seleccionadas</button>
-        <button id="capturePostsBatch" class="button button-secondary button-wide">Abrir y capturar cada seleccionada (navega)</button>
-        <label class="check"><input type="checkbox" id="optBatchMedia" checked> En el modo «abrir y capturar», descargar también sus medios</label>
-      </div>
-    </section>
+        <div class="options">
+          <label class="check"><input type="checkbox" id="optHideFixed" checked> Ocultar barras fijas y avisos al unir tramos</label>
+          <label class="check"><input type="checkbox" id="optCopyDownloads" checked> Guardar también cada archivo en Descargas/RASTRO-CAPTURE</label>
+        </div>
+        <button id="openRecorder" class="button button-danger button-wide">● Abrir grabador de pestaña</button>
+        <p class="fineprint">El grabador documenta vídeos que no se pueden descargar directamente (HLS/DASH, fuentes internas) o una navegación.</p>
+      </section>
 
-    <section class="panel">
-      <div class="panel-heading"><div><span class="step">06</span><h2>Multimedia de esta página</h2></div><span id="mediaCount" class="counter">0</span></div>
-      <div id="mediaList" class="media-list empty">Analiza la página para localizar imágenes y vídeos. Los archivos se validan antes de guardarse.</div>
-      <button id="downloadAllMedia" class="button button-primary button-wide" hidden>Descargar todo</button>
-      <div id="batchReport" class="batch-report" hidden></div>
-    </section>
+      <details class="panel fold" id="foldLoad">
+        <summary><h2>Cargar más contenido</h2></summary>
+        <p class="help">Desplaza la página automáticamente para cargar más publicaciones de un perfil (o contenido diferido) antes de capturar o descargar.</p>
+        <div class="inline-row">
+          <label class="inline">Hasta <input id="loadMax" type="number" min="6" max="2000" value="60"> publicaciones</label>
+          <button id="loadMore" class="button button-secondary">Cargar</button>
+        </div>
+      </details>
 
-    <section class="panel">
-      <div class="panel-heading"><div><span class="step">07</span><h2>Evidencias</h2></div><span id="evidenceCount" class="counter">0</span></div>
-      <div id="evidenceList" class="evidence-list empty">No hay evidencias guardadas en esta investigación.</div>
-      <button id="exportPackage" class="button button-primary button-wide" disabled>Exportar paquete ZIP e informe HTML</button>
-      <p class="fineprint">El paquete incluye INFORME.html imprimible, MANIFEST.json, CSV, SHA256SUMS.txt y todos los originales. Antes de exportar se recalcula el hash de cada archivo.</p>
-    </section>
+      <details class="panel fold" id="foldPosts" open>
+        <summary><h2>Publicaciones detectadas</h2><span id="postCount" class="counter">0</span></summary>
+        <div id="postList" class="post-list empty">Analiza un perfil o publicación para ver las publicaciones detectadas.</div>
+        <div id="postActions" class="stack" hidden>
+          <div class="inline-row">
+            <button id="selectAllPosts" class="button button-ghost button-small">Seleccionar todas</button>
+            <button id="selectNonePosts" class="button button-ghost button-small">Ninguna</button>
+            <span id="selectedCount" class="muted-small">0 seleccionadas</span>
+          </div>
+          <button id="downloadPostsMedia" class="button button-primary button-wide">Descargar imágenes y vídeos de las seleccionadas</button>
+          <button id="capturePostsBatch" class="button button-secondary button-wide">Abrir y capturar cada seleccionada (navega)</button>
+          <label class="check"><input type="checkbox" id="optBatchMedia" checked> En el modo «abrir y capturar», descargar también sus medios</label>
+        </div>
+      </details>
+
+      <details class="panel fold" id="foldMedia" open>
+        <summary><h2>Multimedia de esta página</h2><span id="mediaCount" class="counter">0</span></summary>
+        <div id="mediaList" class="media-list empty">Analiza la página para localizar imágenes y vídeos. Los archivos se validan antes de guardarse.</div>
+        <button id="downloadAllMedia" class="button button-primary button-wide" hidden>Descargar todo</button>
+        <div id="batchReport" class="batch-report" hidden></div>
+      </details>
+    </div>
+
+    <!-- ============================== EVIDENCIAS ============================== -->
+    <div class="view" data-view="evidencias" role="tabpanel" aria-labelledby="tab-evidencias" hidden>
+      <section class="panel">
+        <div class="panel-heading"><h2>Evidencias de la sesión</h2><span id="evidenceBytes" class="badge">0 B</span></div>
+        <div class="button-row">
+          <button id="checkIntegrity" class="button button-secondary" disabled title="Recalcula el SHA-256 de cada archivo guardado y lo compara con el registrado al capturar">Comprobar hashes</button>
+          <button id="openVerifier" class="button button-secondary" title="Verificador independiente de un paquete ZIP o carpeta ya exportados">Verificar integridad</button>
+        </div>
+        <div id="integritySummary" class="integrity-summary" hidden></div>
+        <div id="evidenceList" class="evidence-list empty">No hay evidencias guardadas en esta sesión.</div>
+        <button id="goExport" class="button button-primary button-wide" disabled>Exportar paquete de evidencias…</button>
+        <p class="fineprint">Cada archivo conserva sus bytes sin modificar. El SHA-256 se calcula al incorporarlo y se recalcula al exportar. Eliminar una evidencia queda anotado en el registro.</p>
+      </section>
+    </div>
+
+    <!-- ============================== INFORMES ============================== -->
+    <div class="view" data-view="informes" role="tabpanel" aria-labelledby="tab-informes" hidden>
+      <details class="panel fold" id="foldInstitution" open>
+        <summary><h2>Personalización institucional</h2><span class="badge badge-keep">SE CONSERVA</span></summary>
+        <p class="help">Datos de tu unidad, reutilizables entre sesiones. Aparecen en el encabezado de los informes. Se guardan solo en este navegador.</p>
+        <div class="logo-box">
+          <div id="logoPreview" class="logo-preview empty" aria-live="polite">Sin escudo</div>
+          <div class="logo-actions">
+            <input type="file" id="logoFile" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" hidden>
+            <button id="logoChoose" class="button button-secondary button-small">Cargar escudo o logotipo</button>
+            <button id="logoRemove" class="button button-ghost button-small" hidden>Eliminar</button>
+            <small id="logoInfo" class="muted-small">PNG, JPG o SVG · máx. 5 MB</small>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="instKeepLogo" checked> Conservar el escudo para futuras sesiones</label>
+        <div class="form-grid">
+          <label class="full">Unidad investigadora<input id="caseUnit" maxlength="160" placeholder="Denominación de la unidad" autocomplete="off"></label>
+          <label class="full">Dependencia o grupo<input id="instDepartment" maxlength="160" placeholder="Grupo, sección o dependencia" autocomplete="off"></label>
+          <label>Identificador profesional<input id="caseInvestigator" maxlength="120" placeholder="TIP / carné profesional" autocomplete="off"></label>
+          <label>Lugar de actuación (opcional)<input id="instPlace" maxlength="160" placeholder="Localidad" autocomplete="off"></label>
+        </div>
+      </details>
+
+      <details class="panel fold" id="foldCase" open>
+        <summary><h2>Datos del expediente</h2><span class="badge badge-case">SOLO ESTA SESIÓN</span></summary>
+        <p class="help">Datos específicos de esta investigación. Se vacían al iniciar una sesión nueva. La referencia y las diligencias se editan en la cabecera.</p>
+        <div class="form-grid">
+          <label class="full">Denominación de la investigación<input id="caseName" maxlength="160" placeholder="Nombre opcional" autocomplete="off"></label>
+          <label class="full">Observaciones generales del investigador<textarea id="caseObservations" rows="4" maxlength="6000" placeholder="Circunstancias relevantes de la actuación. Figurarán en el informe como dato introducido manualmente."></textarea></label>
+        </div>
+      </details>
+
+      <section class="panel">
+        <div class="panel-heading"><h2>Informes</h2></div>
+        <p class="help">Ambos informes comparten los mismos datos y evidencias. El visor permite revisarlos, imprimirlos o guardarlos como HTML autónomo o PDF.</p>
+        <div class="button-row">
+          <button id="viewTechnical" class="button button-secondary" disabled>Informe técnico</button>
+          <button id="viewSummary" class="button button-secondary" disabled>Informe resumido</button>
+        </div>
+      </section>
+
+      <section class="panel accent">
+        <div class="panel-heading"><h2>Exportar paquete de evidencias</h2></div>
+        <div class="options">
+          <label class="check"><input type="checkbox" id="optIncludePdf" checked> Incluir los informes también en PDF</label>
+          <label class="check"><input type="checkbox" id="optZipHash" checked> Entregar el SHA-256 del ZIP en un archivo .sha256 aparte</label>
+        </div>
+        <button id="exportPackage" class="button button-primary button-wide" disabled>Exportar paquete ZIP con informes</button>
+        <div id="exportResult" class="saved-file" hidden></div>
+        <p class="fineprint">El paquete contiene evidencias/, informes/, registros/, metadatos/manifest.json y README_EVIDENCIAS.txt. Antes de exportar se recalcula el hash de cada archivo.</p>
+      </section>
+    </div>
+
+    <!-- ============================== CONFIGURACIÓN ============================== -->
+    <div class="view" data-view="config" role="tabpanel" aria-labelledby="tab-config" hidden>
+      <section class="panel">
+        <div class="panel-heading"><h2>Almacenamiento local</h2></div>
+        <dl class="facts">
+          <dt>Evidencias en esta sesión</dt><dd id="cfgEvidence">—</dd>
+          <dt>Espacio usado por la extensión</dt><dd id="cfgUsage">—</dd>
+          <dt>Entradas del registro de actividad</dt><dd id="cfgLog">—</dd>
+        </dl>
+        <p class="help"><b>Qué permanece en este navegador:</b> las evidencias y su registro (hasta que inicies una sesión nueva), los datos del expediente en curso, el perfil institucional con su escudo y estas preferencias. Nada se envía a servidores. Las copias en Descargas y los ZIP exportados son archivos tuyos: la extensión no los borra.</p>
+        <div class="stack">
+          <button id="cfgClearSession" class="button button-secondary button-wide">Eliminar la sesión actual y sus evidencias</button>
+          <button id="cfgClearInstitution" class="button button-secondary button-wide">Borrar el perfil institucional y el escudo</button>
+          <button id="cfgClearAll" class="button button-danger button-wide">Borrar todos los datos de la extensión</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading"><h2>Seguridad y permisos</h2></div>
+        <dl class="facts">
+          <dt>Acceso a todos los sitios (opcional)</dt><dd id="cfgAllSites">—</dd>
+        </dl>
+        <p class="help">Instagram y TikTok están permitidos de forma fija. Para otras webs el navegador pide permiso cuando hace falta. Puedes retirar aquí el permiso general.</p>
+        <button id="cfgRevokeSites" class="button button-secondary button-wide" hidden>Retirar el acceso a todos los sitios</button>
+        <ul class="plain">
+          <li>Procesamiento local; sin telemetría ni servicios externos.</li>
+          <li>No se leen ni exportan cookies, contraseñas ni tokens de sesión.</li>
+          <li>No se eluden autenticación, controles de acceso ni DRM.</li>
+          <li>El escudo se rasteriza al cargarlo: un SVG nunca se guarda ni se incrusta con contenido activo.</li>
+        </ul>
+      </section>
+
+      <section class="panel about">
+        <img src="assets/rastro-capture-logo.jpg" alt="RASTRO CAPTURE" class="about-logo">
+        <p><strong>RASTRO CAPTURE</strong> <span id="cfgVersion"></span><br>Kit RASTRO — Herramientas de Investigación de Fuentes Abiertas</p>
+      </section>
+    </div>
   </main>
 
-  <footer><span>v0.4.0 · Procesamiento local · SHA-256</span><span>Creado por S3GAD3</span></footer>
+  <footer><span id="footVersion">Procesamiento local · SHA-256</span><span>Creado por S3GAD3</span></footer>
   <script src="src/page/normalize.js"></script>
   <script type="module" src="sidepanel.js"></script>
 </body>

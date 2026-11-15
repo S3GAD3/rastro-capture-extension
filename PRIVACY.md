@@ -1,24 +1,28 @@
 # Privacidad de RASTRO CAPTURE
 
-RASTRO CAPTURE procesa localmente la pestaña que el usuario decide analizar. No incorpora telemetría, publicidad, cuentas de usuario ni un servidor propio.
+RASTRO CAPTURE procesa localmente la pestaña que el usuario decide analizar. No incorpora telemetría, publicidad, cuentas de usuario ni servidor propio, y no envía información a terceros.
 
-La extensión dispone de acceso de lectura a páginas de Instagram y TikTok para que el análisis continúe funcionando al navegar dentro de esas plataformas. Para otras webs, el acceso es temporal y comienza tras una acción expresa del usuario. Estos permisos se utilizan para:
+## Qué se guarda en el navegador
 
-- leer el contenido visible y sus metadatos;
-- localizar imágenes y vídeos expuestos por la página;
-- generar capturas;
-- grabar la pestaña cuando el usuario inicia esa función;
-- guardar archivos solicitados;
-- conservar localmente las evidencias hasta su exportación o eliminación.
+| Dato | Dónde | Hasta cuándo |
+|---|---|---|
+| Evidencias, registro de actividad y catálogo de publicaciones | IndexedDB de la extensión | Hasta **Nueva sesión**, el borrado desde Configuración o la desinstalación |
+| Datos del expediente (referencia, diligencias, denominación, observaciones) | `chrome.storage.local` | Hasta **Nueva sesión** |
+| Perfil institucional y escudo | `chrome.storage.local` | Hasta que se borren desde Configuración |
+| Preferencias | `chrome.storage.local` | Hasta **Borrar todos los datos** |
 
-Los enlaces multimedia descargados siguen siendo solicitados al servidor que aloja el contenido. Ese servidor puede registrar la petición conforme a sus propias políticas.
+Las copias en Descargas y los ZIP exportados son archivos del usuario: la extensión no los borra.
 
-La extensión no lee ni exporta contraseñas, cookies o credenciales. Tampoco intenta evitar controles de acceso, cifrado o DRM.
+## Permisos
 
-El usuario puede eliminar la investigación local mediante el botón **Nueva** o desinstalando la extensión.
+Acceso fijo a Instagram y TikTok (y sus CDN) para que el análisis funcione al navegar por ellos. Para otras webs el acceso se pide cuando hace falta; el permiso «acceder a todos los sitios» es opcional y puede retirarse desde Configuración. Se usan para leer el contenido visible y sus metadatos, localizar medios, capturar, grabar cuando el usuario lo inicia y guardar los archivos solicitados.
 
-## Recolector de respuestas (v0.4.0)
+Los medios descargados se piden al servidor que los aloja, que puede registrar la petición. Las descargas de los CDN de Instagram y TikTok llevan el `Referer` de la plataforma, como las de la propia página.
 
-En Instagram y TikTok la extensión inyecta un script pasivo que observa las respuestas JSON que la propia página ya recibe (publicaciones, cuentas, listados). No realiza peticiones propias, no lee cookies ni cabeceras de autenticación y no modifica las respuestas. Los datos se guardan solo en el navegador del investigador hasta su exportación o eliminación.
+## Lo que no hace
 
-Para descargar vídeos de los CDN de las plataformas, las peticiones iniciadas por la extensión llevan el `Referer` de la plataforma, igual que las que haría la propia página. El permiso «acceder a todos los sitios» es opcional y se solicita solo cuando es necesario.
+- No lee ni exporta contraseñas, cookies, cabeceras de autenticación ni tokens de sesión.
+- No elude autenticación, controles de acceso, cifrado ni DRM.
+- El recolector de Instagram y TikTok es pasivo: observa las respuestas JSON que la página ya recibe; no hace peticiones propias ni modifica las respuestas.
+
+Los datos de origen guardados (JSON de la plataforma, MHTML) son contenido de la página y pueden incluir datos personales de terceros. Trátalos conforme a los procedimientos de tu unidad.

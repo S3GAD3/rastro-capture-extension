@@ -18,7 +18,7 @@ export async function launch(extPath, { helperPage = "recorder.html" } = {}) {
     ignoreDefaultArgs: ["--disable-extensions"],
     args: [
       `--disable-extensions-except=${extPath}`, `--load-extension=${extPath}`,
-      `--host-resolver-rules=${HOST_RULES}`, "--ignore-certificate-errors", "--no-sandbox",
+      `--host-resolver-rules=${HOST_RULES}`, "--ignore-certificate-errors", "--no-sandbox", "--no-proxy-server",
       "--autoplay-policy=no-user-gesture-required", "--window-size=1200,900",
       `--enable-features=SidePanelUpdates`
     ]

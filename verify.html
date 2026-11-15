@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verificar integridad · RASTRO CAPTURE</title>
+  <link rel="stylesheet" href="tools.css">
+</head>
+<body>
+  <header class="top">
+    <img src="assets/rastro-capture-mark.png" alt="Logotipo de RASTRO CAPTURE">
+    <div><h1>RASTRO <span>CAPTURE</span></h1><p>Kit RASTRO · Verificar integridad de un paquete de evidencias</p></div>
+  </header>
+  <main class="page">
+    <section class="card">
+      <h2>1. Selecciona el paquete que quieres comprobar</h2>
+      <p class="muted">La comprobación se hace en este equipo: ningún archivo sale del navegador. No modifica el paquete ni la sesión de captura en curso.</p>
+      <div class="pick">
+        <div class="opt"><b>Paquete ZIP</b><small>El ZIP exportado por RASTRO CAPTURE. Si añades su archivo <code>.sha256</code>, se comprueba también la huella del ZIP completo.</small>
+          <input type="file" id="zipInput" accept=".zip,.sha256,application/zip" multiple hidden><button id="pickZip" class="button primary">Elegir ZIP (y .sha256)</button></div>
+        <div class="opt"><b>Carpeta extraída</b><small>La carpeta del paquete ya descomprimido, con <code>metadatos/manifest.json</code> dentro.</small>
+          <input type="file" id="dirInput" webkitdirectory hidden><button id="pickDir" class="button">Elegir carpeta</button></div>
+        <div class="opt"><b>Archivos sueltos</b><small>Un conjunto de archivos junto con su <code>manifest.json</code>. Se localizan por nombre.</small>
+          <input type="file" id="filesInput" multiple hidden><button id="pickFiles" class="button">Elegir archivos</button></div>
+      </div>
+      <div id="drop" class="drop">…o arrastra aquí el ZIP (y su .sha256)</div>
+      <div id="working" hidden><p id="workText" class="muted" role="status" aria-live="polite"></p><div class="progress"><i id="workFill"></i></div></div>
+    </section>
+
+    <section id="result" class="card" hidden>
+      <h2>2. Resultado</h2>
+      <div id="verdict" class="verdict"></div>
+      <div id="counts" class="counts"></div>
+      <table class="kv"><tbody id="summary"></tbody></table>
+      <p><button id="saveReport" class="button primary">Guardar informe de verificación (HTML)</button></p>
+    </section>
+
+    <section id="detail" class="card" hidden>
+      <h2>3. Detalle de los archivos examinados</h2>
+      <table><thead><tr><th style="width:40px">Nº</th><th style="width:74px">Evidencia</th><th style="width:26%">Archivo</th><th style="width:22%">Resultado</th><th>SHA-256</th></tr></thead><tbody id="rows"></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Qué acredita esta verificación</h2>
+      <p class="note">Se recalcula el SHA-256 de cada archivo y se compara con el declarado en el manifiesto aportado (y en <code>SHA256SUMS.txt</code>, si existe). Una coincidencia acredita la <b>integridad respecto de ese manifiesto</b>: los archivos no han cambiado desde que se generó. <b>No acredita la autenticidad de origen</b>: no demuestra por sí misma quién creó el contenido ni cuándo fue publicado, ni que el manifiesto no haya sido sustituido junto con los archivos. Para esto último, contrasta el SHA-256 del ZIP con el consignado en las diligencias al exportar.</p>
+    </section>
+    <footer class="foot"><span id="ver"></span> · Kit RASTRO — Herramientas de Investigación de Fuentes Abiertas · Creado por S3GAD3</footer>
+  </main>
+  <script type="module" src="verify.js"></script>
+</body>
+</html>

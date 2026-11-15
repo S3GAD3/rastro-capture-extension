@@ -1,7 +1,7 @@
 // src/lib/store.js · almacenamiento local (IndexedDB) del expediente
 // Esquema v3: `evidence` (metadatos ligeros) · `blobs` (contenido) · `log` (registro de actividad) · `kv`.
 // Separar los blobs evita cargar cientos de MB en memoria cada vez que se pinta la lista.
-import { KIND_LABELS, codeOf, evidenceFilename, folderFor } from "./paths.js";
+import { KIND_LABELS, codeOf, evidenceFilename, folderFor, sessionLabel } from "./paths.js";
 
 const DB_NAME = "rastro-capture";
 const DB_VERSION = 3;
@@ -72,6 +72,7 @@ export async function addEvidence(meta, blob = null) {
   const tx = db.transaction(["evidence", "blobs", "kv"], "readwrite");
   const kv = tx.objectStore("kv");
   const current = (await promisify(kv.get("seq")))?.value || 0;
+  const session = (await promisify(kv.get("session")))?.value || null;
   const seq = current + 1;
   const code = codeOf(seq);
   const ext = meta.extension || ".bin";
@@ -79,7 +80,7 @@ export async function addEvidence(meta, blob = null) {
   const folder = folderFor(meta.kind, { platform: meta.source?.platform || "", username: meta.source?.username || "", postId: meta.details?.postId || "" });
   const record = {
     id: crypto.randomUUID(), seq, code, createdAt: new Date().toISOString(), external: false, type: KIND_LABELS[meta.kind] || meta.kind,
-    ...meta, filename, zipPath: `${folder}/${filename}`, hasBlob: Boolean(blob), size: blob?.size ?? meta.size ?? 0, mime: blob?.type || meta.mime || ""
+    sessionId: session?.id || "", ...meta, filename, zipPath: `${folder}/${filename}`, hasBlob: Boolean(blob), size: blob?.size ?? meta.size ?? 0, mime: blob?.type || meta.mime || ""
   };
   delete record.slug; delete record.extension;
   tx.objectStore("evidence").put(record);
@@ -147,4 +148,33 @@ export async function kvSet(key, value) {
   const tx = db.transaction("kv", "readwrite");
   tx.objectStore("kv").put({ key, value });
   await done(tx);
+}
+
+// ------------------------------------------------------------------ Sesión de investigación
+// Una sesión agrupa todas las evidencias del expediente local. Se crea al primer uso y se sustituye al
+// iniciar una sesión nueva (que borra evidencias, registro y catálogo): así no se mezclan expedientes.
+export function newSessionRecord(now = new Date()) {
+  const uuid = crypto.randomUUID();
+  return { id: sessionLabel(now, uuid.replace(/-/g, "")), uuid, startedAt: now.toISOString(), utcOffsetMinutes: -now.getTimezoneOffset() };
+}
+export async function getSession() { return (await kvGet("session")) || null; }
+export async function ensureSession() {
+  const db = await openDb();
+  const tx = db.transaction("kv", "readwrite");
+  const kv = tx.objectStore("kv");
+  let session = (await promisify(kv.get("session")))?.value;
+  if (!session) { session = newSessionRecord(); kv.put({ key: "session", value: session }); }
+  await done(tx);
+  return session;
+}
+/** Borra evidencias, contenido, registro y catálogo, y abre una sesión nueva. */
+export async function startNewSession() {
+  await clearAll();
+  return ensureSession();
+}
+export async function storageSummary() {
+  const db = await openDb();
+  const tx = db.transaction(["evidence", "log"]);
+  const [evidence, log] = await Promise.all([promisify(tx.objectStore("evidence").getAll()), promisify(tx.objectStore("log").count())]);
+  return { evidenceCount: evidence.length, bytes: evidence.reduce((n, e) => n + (e.size || 0), 0), logEntries: log };
 }

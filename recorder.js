@@ -57,7 +57,7 @@ async function selectTabStream() {
 
 async function startRecording() {
   if (!chrome.desktopCapture?.chooseDesktopMedia || !navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) throw new Error("Este navegador no ofrece la API desktopCapture necesaria.");
-  setStatus("busy", "Abriendo el selector nativo… elige la pestaña de Instagram, TikTok u otra.");
+  setStatus("busy", "Abriendo el selector nativo… elige la pestaña objetivo.");
   const selected = await selectTabStream();
   const videoTrack = selected.getVideoTracks()[0];
   if (!videoTrack) throw new Error("El navegador no proporcionó una pista de vídeo.");
@@ -68,7 +68,7 @@ async function startRecording() {
   recorder = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 5_000_000 } : undefined);
   recorder.addEventListener("dataavailable", (event) => { if (event.data?.size) chunks.push(event.data); });
   recorder.addEventListener("error", (event) => setStatus("error", event.error?.message || "La grabación se ha interrumpido."));
-  videoTrack.addEventListener("ended", () => finalizeRecording().catch(showError), { once: true });
+  videoTrack.addEventListener("ended", () => finalizeRecording().catch(recordingFailed), { once: true });
   recorder.start(1000);
   els.start.disabled = true;
   els.stop.disabled = false;
@@ -76,7 +76,7 @@ async function startRecording() {
   updateTimer();
   timerId = setInterval(updateTimer, 1000);
   setStatus("ready", `Grabando ${videoTrack.label || "la pestaña seleccionada"}. Usa Dejar de compartir para terminar y guardar.`);
-  await store.addLog("grabacion-inicio", { url: targetTab?.url || "", detail: videoTrack.label || "", result: "OK" }).catch(() => {});
+  await store.addLog("Grabación iniciada", { url: targetTab?.url || "", detail: videoTrack.label || "pestaña seleccionada" }).catch(() => {});
   await chrome.action.setBadgeBackgroundColor({ color: "#c44757" }).catch(() => {});
   await chrome.action.setBadgeText({ text: "REC" }).catch(() => {});
   setTimeout(async () => {
@@ -121,13 +121,13 @@ async function finalizeRecording() {
   const source = { url: targetTab?.url || "", canonicalUrl: targetTab?.url || "", title: targetTab?.title || "", platform, pageKind: "recording", contentType: "navegación grabada", contentId: "", username: "" };
   const record = await store.addEvidence({
     kind: "recording", slug: `${platform}_${host}_grabacion`, extension: ".webm", sha256, thumb: "", mime: "video/webm", note: "",
-    case: rastroCaptureCase || {}, source, createdLocal: formatLocal(new Date().toISOString(), -new Date().getTimezoneOffset()),
+    case: rastroCaptureCase || {}, source, utcOffsetMinutes: -new Date().getTimezoneOffset(), createdLocal: formatLocal(new Date().toISOString(), -new Date().getTimezoneOffset()),
     details: { startedAt: new Date(startedAt).toISOString(), endedAt: new Date(endedAt).toISOString(), durationSeconds: Math.round((endedAt - startedAt) / 1000), hasAudio, note: "WebM generado por MediaRecorder; sin tabla de búsqueda interna (no permite saltos en algunos reproductores)." }
   }, blob);
   let path = "Guardada en el expediente; la copia de Descargas no pudo crearse.";
   try { path = await downloadBlob(blob, record.zipPath, rastroCaptureCase?.reference); await store.updateEvidence(record.id, { details: { downloadPath: path } }); }
-  catch (error) { path += ` (${error.message})`; }
-  await store.addLog("grabacion-fin", { url: source.url, detail: `${record.code} ${Math.round((endedAt - startedAt) / 1000)} s`, result: `OK · SHA-256 ${sha256.slice(0, 16)}…` }).catch(() => {});
+  catch (error) { path += ` (${error.message})`; await store.addLog("Aviso: copia en Descargas no creada", { url: source.url, detail: `${record.code}: ${error.message}`, level: "warn", code: record.code }).catch(() => {}); }
+  await store.addLog("Grabación de pestaña", { url: source.url, detail: `${record.filename} · ${Math.round((endedAt - startedAt) / 1000)} s`, code: record.code }).catch(() => {});
   const channel = new BroadcastChannel("rastro-capture-evidence");
   channel.postMessage({ type: "updated" });
   channel.close();
@@ -156,10 +156,16 @@ function showError(error) {
   setStatus("error", error?.name === "NotAllowedError" ? "Grabación cancelada o no autorizada. Vuelve a intentarlo y selecciona la pestaña objetivo." : (error?.message || String(error)));
 }
 
-els.start.addEventListener("click", () => startRecording().catch(showError));
-els.stop.addEventListener("click", () => finalizeRecording().catch(showError));
+/** Fallo durante la grabación: consta como incidencia de la sesión (una cancelación del selector no lo es). */
+function recordingFailed(error) {
+  if (error?.name !== "NotAllowedError") store.addLog("Error de grabación", { url: targetTab?.url || "", detail: error?.message || String(error), level: "error" }).catch(() => {});
+  showError(error);
+}
+els.start.addEventListener("click", () => startRecording().catch(recordingFailed));
+els.stop.addEventListener("click", () => finalizeRecording().catch(recordingFailed));
 window.addEventListener("beforeunload", (event) => { if (recorder?.state === "recording") event.preventDefault(); });
 
+document.querySelector("#version").textContent = `v${chrome.runtime.getManifest().version}`;
 const tabId = Number(new URL(location.href).searchParams.get("tabId"));
 if (!Number.isInteger(tabId) || !tabId) {
   showError(new Error("No se ha recibido una pestaña objetivo válida. Cierra esta ventana y abre el grabador desde RASTRO CAPTURE."));
